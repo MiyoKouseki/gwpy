@@ -94,3 +94,4 @@ def get_read_format(cls, source, args, kwargs):
     finally:
         if ctx is not None:
             ctx.__exit__(*sys.exc_info())  # pylint: disable=no-member
+            
