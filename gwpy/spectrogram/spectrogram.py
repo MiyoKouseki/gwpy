@@ -382,16 +382,10 @@ class Spectrogram(Array2D):
         """
         data = numpy.vstack([s.value for s in spectra])
         spec1 = list(spectra)[0]
-        print 'all ', [s.df == spec1.df for s in spectra]
-        print '0',spectra[0].df.value
-        print '1',spectra[1].df.value
-        
-        for spec in spectra:
-            print spec.df
         if not all(s.f0 == spec1.f0 for s in spectra):
             raise ValueError("Cannot stack spectra with different f0")
-        #if not all(s.df == spec1.df for s in spectra):
-        #    raise ValueError("Cannot stack spectra with different df")
+        if not all(s.df == spec1.df for s in spectra):
+            raise ValueError("Cannot stack spectra with different df")
         kwargs.setdefault('name', spec1.name)
         kwargs.setdefault('channel', spec1.channel)
         kwargs.setdefault('epoch', spec1.epoch)
@@ -432,7 +426,7 @@ class Spectrogram(Array2D):
 
     def zpk(self, zeros, poles, gain, analog=True):
         """Filter this `Spectrogram` by applying a zero-pole-gain filter
-
+        
         Parameters
         ----------
         zeros : `array-like`
