@@ -28,14 +28,17 @@ def read_gif_series(input_, array_type=Series, unpack=True, **kwargs):
     """
     start = kwargs.get('start', None)
     end = kwargs.get('end', None)
+    name = kwargs.get('name', None)
+    
     tlen = end - start
     fs = 200.0
     #
-    yarr = fromfile(input_)        
-    xarr = arange(len(yarr))/fs # suport only strain data of 200 Hz
-    xarr = xarr + start
-    return array_type(yarr, xindex=xarr, dx=1./fs, unit='strain')
-
+    yarr = fromfile(input_)
+    xarr = arange(len(yarr))/fs
+    #arr =  array_type(yarr, unit='strain', name=name, x0=start, xunit='sec', dx=1.0/fs)
+    arr =  array_type(yarr, unit='strain', name=name, xindex=xarr)
+    #exit()
+    return arr
 
 # -- write --------------------------------------------------------------------
 
