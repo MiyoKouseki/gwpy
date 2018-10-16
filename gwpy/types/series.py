@@ -110,9 +110,9 @@ class Series(Array):
     _metadata_slots = Array._metadata_slots + ('x0', 'dx', 'xindex')
     _default_xunit = Unit('')
     _ndim = 1
-
+    
     def __new__(cls, value, unit=None, x0=None, dx=None, xindex=None,
-                xunit=None, **kwargs):
+                xunit=None, **kwargs):        
         # check input data dimensions are OK
         shape = numpy.shape(value)
         if len(shape) != cls._ndim:
@@ -216,9 +216,9 @@ class Series(Array):
             except AttributeError:
                 self._dx = Quantity(1, self.xunit)
             else:
-                if not self.xindex.regular:
-                    raise AttributeError("This series has an irregular x-axis "
-                                         "index, so 'dx' is not well defined")
+                #if not self.xindex.regular:
+                #    raise AttributeError("This series has an irregular x-axis "
+                #                         "index, so 'dx' is not well defined")
                 self._dx = self.xindex[1] - self.xindex[0]
             return self._dx
 
@@ -258,7 +258,7 @@ class Series(Array):
         try:
             return self._xindex
         except AttributeError:
-            # create regular index on-the-fly
+            # create regular index on-the-fly            
             self._xindex = Index(
                 self.x0 + (numpy.arange(self.shape[0]) * self.dx), copy=False)
             return self._xindex
