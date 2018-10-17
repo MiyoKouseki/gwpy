@@ -21,7 +21,7 @@
 These files should be in gif data style
 """
 
-from numpy import (column_stack, fromfile, arange)
+from numpy import (column_stack, fromfile, arange, isclose, diff)
 
 from ...io import registry as io_registry
 from ...io.utils import identify_factory
@@ -45,9 +45,14 @@ def read_gif_series(input_, array_type=Series, unpack=True, **kwargs):
     """
     start = kwargs.get('start', None)
     name = kwargs.get('name', None)
-    fs = 200.0 # only for strain file
-    yarr = fromfile(input_)        
-    return array_type(yarr, unit='strain', name=name, x0=start,dx=1./fs)
+
+    yarr = fromfile(input_)
+    from scipy.signal import decimate
+    fs = 200
+    yarr = decimate(yarr,int(fs/8))
+    dx = 1./8
+    return array_type(yarr, unit='strain', name=name, x0=start, dx=dx)
+
 
 # -- write --------------------------------------------------------------------
 
