@@ -22,6 +22,9 @@ These files should be in gif data style
 """
 
 from numpy import (column_stack, fromfile, arange, isclose, diff)
+from scipy.signal import decimate
+from miyopy.gif import fname2gps
+import numpy as np
 
 from ...io import registry as io_registry
 from ...io.utils import identify_factory
@@ -32,7 +35,7 @@ __author__ = "Duncan Macleod <duncan.macleod@ligo.org>"
 
 # -- read ---------------------------------------------------------------------
 
-def read_gif_series(input_, array_type=Series, unpack=True, **kwargs):
+def read_gif_series(input_, array_type=Series, unpack=True, fs=None, **kwargs):
     """Read a `Series` from an GIF file
 
     Parameters
@@ -43,16 +46,24 @@ def read_gif_series(input_, array_type=Series, unpack=True, **kwargs):
     array_type : `type`
         desired return type
     """
-    start = kwargs.get('start', None)
-    name = kwargs.get('name', None)
-
-    yarr = fromfile(input_)
-    from scipy.signal import decimate
+    #FileNotFoundError
     fs = 200
+    if isinstance(fs,type(None)):
+        raise ValueError('fs is not defined.')
+
+    try:
+        yarr = fromfile(input_)
+    except IOError as e: ## In python3, FileNotFoundError
+        print('No such data in ',input_)
+        yarr = np.zeros(60*fs)
+        yarr[:] = np.nan
+        
+    x0 = fname2gps(input_)
     yarr = decimate(yarr,int(fs/8))
     dx = 1./8
-    return array_type(yarr, unit='strain', name=name, x0=start, dx=dx)
-
+    arr= array_type(yarr, unit='strain',  x0=x0, dx=dx)
+    #print(arr)
+    return arr
 
 # -- write --------------------------------------------------------------------
 
