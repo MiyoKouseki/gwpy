@@ -23,15 +23,29 @@ These files should be in gif data style
 
 from numpy import (column_stack, fromfile, arange, isclose, diff)
 from scipy.signal import decimate
-from miyopy.gif import fname2gps
+#from miyopy.gif import fname2gps
 import numpy as np
 
 from ...io import registry as io_registry
 from ...io.utils import identify_factory
 from .. import Series
+#from miyopy.gif import fname2gps
 
 __author__ = "Duncan Macleod <duncan.macleod@ligo.org>"
 
+# --
+from astropy.time import Time
+from datetime import datetime as dt
+def fname2gps(fname):
+    datetime_str = fname.split('.')[0].split('/')[-1]
+    time = dt.strptime(datetime_str, '%y%m%d%H%M')
+    gps = Time(time).gps - 3600*9
+    return gps
+
+def gps2datestr(gps):
+    utc = Time(gps, format='gps').to_datetime()
+    date_str = utc.strftime('%Y%m%d%H%M')
+    return date_str
 
 # -- read ---------------------------------------------------------------------
 
