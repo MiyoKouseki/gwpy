@@ -167,7 +167,7 @@ class BodePlot(Plot):
         return self.axes[1]
 
     def add_filter(self, filter_, frequencies=None, dB=True,
-                   analog=False, sample_rate=None, **kwargs):
+                   analog=False, sample_rate=None, unwrap=True, **kwargs):
         """Add a linear time-invariant filter to this BodePlot
 
         Parameters
@@ -215,6 +215,10 @@ class BodePlot(Plot):
 
         # calculate frequency response
         w, mag, phase = lti.bode(w=frequencies)
+
+        # convert wrap
+        if unwrap==False:
+            phase = numpy.arctan2(numpy.sin(phase), numpy.cos(phase))
 
         # convert from decibels
         if not dB:
