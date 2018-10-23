@@ -219,6 +219,7 @@ class BodePlot(Plot):
         # convert wrap
         if unwrap==False:
             phase = numpy.arctan2(numpy.sin(phase), numpy.cos(phase))
+            phase = numpy.rad2deg(phase)
 
         # convert from decibels
         if not dB:
