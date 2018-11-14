@@ -26,6 +26,8 @@ import warnings
 
 from six.moves import reduce
 
+from numpy import ones as numpy_ones
+
 from ...detector import Channel
 from ...io import nds2 as io_nds2
 from ...segments import (Segment, SegmentList)
@@ -39,7 +41,7 @@ __author__ = "Duncan Macleod <duncan.macleod@ligo.org>"
 def print_verbose(*args, **kwargs):
     """Utility to print something only if verbose=True is given
     """
-    if kwargs.pop('verbose', False):
+    if kwargs.pop('verbose', False) is True:
         gprint(*args, **kwargs)
 
 
@@ -78,9 +80,11 @@ def set_parameter(connection, parameter, value, verbose=False):
             'failed to set {}={!r}: {}'.format(parameter, value, str(exc)),
             io_nds2.NDSWarning)
     else:
-        if verbose:
-            print('    [{}] set {}={!r}'.format(connection.get_host(),
-                                                parameter, value))
+        print_verbose(
+            '    [{}] set {}={!r}'.format(
+                connection.get_host(), parameter, value),
+            verbose=verbose,
+        )
 
 
 @io_nds2.open_connection
@@ -107,9 +111,10 @@ def fetch(channels, start, end, type=None, dtype=None, allow_tape=None,
                   verbose=verbose)
     utype = reduce(operator.or_, type.values())  # logical OR of types
     udtype = reduce(operator.or_, dtype.values())
+    epoch = (start, end) if connection.get_protocol() > 1 else None
     ndschannels = io_nds2.find_channels(channels, connection=connection,
-                                        type=utype, dtype=udtype, unique=True,
-                                        epoch=(start, end))
+                                        epoch=epoch, type=utype, dtype=udtype,
+                                        unique=True)
 
     names = [Channel.from_nds2(c).ndsname for c in ndschannels]
     print_verbose('done', verbose=verbose)
@@ -127,6 +132,9 @@ def fetch(channels, start, end, type=None, dtype=None, allow_tape=None,
     if pad is None:
         qsegs = span
         gap = 'raise'
+    elif connection.get_protocol() == 1:
+        qsegs = span
+        gap = 'pad'
     else:
         print_verbose("Querying for data availability...", end=' ',
                       verbose=verbose)
@@ -144,7 +152,8 @@ def fetch(channels, start, end, type=None, dtype=None, allow_tape=None,
 
     # query for each segment
     out = series_class.DictClass()
-    with progress_bar(total=float(abs(qsegs)), desc='Downloading data',
+    desc = verbose if isinstance(verbose, str) else 'Downloading data'
+    with progress_bar(total=float(abs(qsegs)), desc=desc,
                       unit='s', disable=not bool(verbose)) as bar:
         for seg in qsegs:
             total = 0.
@@ -160,7 +169,44 @@ def fetch(channels, start, end, type=None, dtype=None, allow_tape=None,
                 raise RuntimeError("no data received from {0} for {1}".format(
                     connection.get_host(), seg))
 
+    # finalise timeseries to make sure each channel has the correct limits
+    # only if user asked to pad gaps
+    if pad is not None:
+        for chan, ndschan in zip(channels, ndschannels):
+            try:
+                ts = out[chan]
+            except KeyError:
+                out[chan] = _create_series(ndschan, pad, start, end,
+                                           series_class=series_class)
+            else:
+                out[chan] = _pad_series(ts, pad, start, end)
+
     return out
+
+
+def _pad_series(ts, pad, start, end):
+    """Pad a timeseries to match the specified [start, end) limits
+
+    To cover a gap in data returned from NDS
+    """
+    span = ts.span
+    pada = max(int((span[0] - start) * ts.sample_rate.value), 0)
+    padb = max(int((end - span[1]) * ts.sample_rate.value), 0)
+    if pada or padb:
+        return ts.pad((pada, padb), mode='constant', constant_values=(pad,))
+    return ts
+
+
+def _create_series(ndschan, value, start, end, series_class=TimeSeries):
+    """Create a timeseries to cover the specified [start, end) limits
+
+    To cover a gap in data returned from NDS
+    """
+    channel = Channel.from_nds2(ndschan)
+    nsamp = int((end - start) * channel.sample_rate.value)
+    return series_class(numpy_ones(nsamp) * value, t0=start,
+                        sample_rate=channel.sample_rate, unit=channel.unit,
+                        channel=channel)
 
 
 def _get_data_segments(channels, start, end, connection):
