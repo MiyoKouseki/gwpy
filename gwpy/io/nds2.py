@@ -430,6 +430,7 @@ def find_channels(channels, connection=None, host=None, port=None,
         sample_rate = tuple()
 
     # query for channels
+
     out = []
     for name in _get_nds2_names(channels):
         out.extend(_find_channel(connection, name, type, dtype, sample_rate,
@@ -472,6 +473,7 @@ def _find_channel(connection, name, ctype, dtype, sample_rate, unique=False):
         for documentation on the underlying query method
     """
     # parse channel type from name (e.g. 'L1:GDS-CALIB_STRAIN,reduced')
+
     try:
         name, ctype = name.rsplit(',', 1)
     except ValueError:
@@ -481,11 +483,11 @@ def _find_channel(connection, name, ctype, dtype, sample_rate, unique=False):
 
     # query NDS2
     found = connection.find_channels(name, ctype, dtype, *sample_rate)
-
+    
     # if don't care about defaults, just return now
     if not unique:
         return found
-
+    
     # if two results, remove 'online' copy (if present)
     #    (if no online channels present, this does nothing)
     if len(found) == 2:
@@ -539,6 +541,12 @@ def get_availability(channels, start, end,
     nds2.connection.get_availability
         for documentation on the underlying query method
     """
+    raise RuntimeError('nds2.Availability does not support KAGRA nds ' \
+                       'because KAGRA have only nds1 ! Please refer ' \
+                       'https://www.lsc-group.phys.uwm.edu/daswg/projects' \
+                       '/nds-client/doc/manual/ch04s06.html'
+                           )
+    
     from ..segments import (Segment, SegmentList, SegmentListDict)
     connection.set_epoch(start, end)
     names = _get_nds2_names(channels)
