@@ -31,8 +31,8 @@ from six import string_types
 # to give the user a bit more information
 import lalframe
 import lal
-from lal.utils import CacheEntry
-
+#from lal.utils import CacheEntry
+from glue.lal import CacheEntry
 
 from ....io import cache as io_cache
 from ....utils import lal as lalutils
