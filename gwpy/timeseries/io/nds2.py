@@ -118,7 +118,7 @@ def fetch(channels, start, end, type=None, dtype=None, allow_tape=None,
 
     names = [Channel.from_nds2(c).ndsname for c in ndschannels]
     print_verbose('done', verbose=verbose)
-
+    
     # handle minute trend timing
     if (any(c.endswith('m-trend') for c in names) and
             (start % 60 or end % 60)):
@@ -129,6 +129,7 @@ def fetch(channels, start, end, type=None, dtype=None, allow_tape=None,
 
     # get data availability
     span = SegmentList([Segment(start, end)])
+
     if pad is None:
         qsegs = span
         gap = 'raise'
@@ -136,6 +137,7 @@ def fetch(channels, start, end, type=None, dtype=None, allow_tape=None,
         qsegs = span
         gap = 'pad'
     else:
+        warnings.warn('It might raise error... I said ..')
         print_verbose("Querying for data availability...", end=' ',
                       verbose=verbose)
         pad = float(pad)
@@ -149,7 +151,7 @@ def fetch(channels, start, end, type=None, dtype=None, allow_tape=None,
             warnings.warn("Gaps were found in data available from {0}, "
                           "but will be padded with {1}".format(
                               connection.get_host(), pad))
-
+            
     # query for each segment
     out = series_class.DictClass()
     desc = verbose if isinstance(verbose, str) else 'Downloading data'

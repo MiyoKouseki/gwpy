@@ -426,7 +426,7 @@ class Spectrogram(Array2D):
 
     def zpk(self, zeros, poles, gain, analog=True):
         """Filter this `Spectrogram` by applying a zero-pole-gain filter
-
+        
         Parameters
         ----------
         zeros : `array-like`
