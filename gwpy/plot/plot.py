@@ -124,15 +124,16 @@ class Plot(figure.Figure):
 
         # add interactivity (scraped from pyplot.figure())
         backend_mod = get_backend_mod()
+
         try:
             manager = backend_mod.new_figure_manager_given_figure(num, self)
         except AttributeError:
             canvas = backend_mod.FigureCanvas(self)
-            manager = backend_mod.FigureManagerBase(canvas, 1)
-        manager._cidgcf = manager.canvas.mpl_connect(
-            'button_press_event',
-            lambda ev: _pylab_helpers.Gcf.set_active(manager))
-        _pylab_helpers.Gcf.set_active(manager)
+        #    manager = backend_mod.FigureManagerBase(canvas, 1)
+        #manager._cidgcf = manager.canvas.mpl_connect(
+        #    'button_press_event',
+        #    lambda ev: _pylab_helpers.Gcf.set_active(manager))
+        #_pylab_helpers.Gcf.set_active(manager)
         pyplot.draw_if_interactive()
 
     def _init_axes(self, data, method='plot',
