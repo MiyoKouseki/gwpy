@@ -462,6 +462,7 @@ def find_channels(channels, connection=None, host=None, port=None,
 
     # query for channels
     out = []
+
     for name in _get_nds2_names(channels):
         out.extend(_find_channel(connection, name, type, dtype, sample_rate,
                                  unique=unique))
@@ -507,7 +508,8 @@ def _find_channel(connection, name, ctype, dtype, sample_rate, unique=False):
     name, ctype = _strip_ctype(name, ctype, connection.get_protocol())
 
     # query NDS2
-    found = connection.find_channels(name, ctype, dtype, *sample_rate)
+    #found = connection.find_channels(name, ctype, dtype, *sample_rate)
+    found = connection.find_channels(name)
 
     # if don't care about defaults, just return now
     if not unique:
