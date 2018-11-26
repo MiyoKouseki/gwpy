@@ -616,7 +616,11 @@ class TimeSeriesBase(Series):
         metadata.setdefault('epoch', LIGOTimeGPS(buffer_.gps_seconds,
                                                  buffer_.gps_nanoseconds))
         metadata.setdefault('sample_rate', channel.sample_rate)
-        metadata.setdefault('unit', channel.unit)
+        if not channel.unit:
+            unit = channel.unit
+        else:
+            unit = 'ct'
+        metadata.setdefault('unit', unit)
         metadata.setdefault('name', str(channel))
         return cls(buffer_.data, **metadata)
 
@@ -1016,7 +1020,7 @@ class TimeSeriesBaseDict(OrderedDict):
 
         if dtype is None:
             dtype = {}
-
+            
         # -- open a connection ------------------
 
         # open connection to specific host
