@@ -159,7 +159,7 @@ units.add_enabled_units(units.imperial)
 registry = units.get_current_unit_registry().registry
 for unit, aliases in [
         (units.Unit('ct'), ('counts',)),
-        (units.Unit('Celsius'), ('Degrees_C', 'DegC')),
+        (units.Unit('Celsius'), ('Degrees_C', 'DegC', 'deg_c')),
         (units.Unit('Fahrenheit'), ('Degrees_F', 'DegF')),
 ]:
     unit.names.extend(aliases)
