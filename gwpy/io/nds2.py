@@ -508,8 +508,8 @@ def _find_channel(connection, name, ctype, dtype, sample_rate, unique=False):
     name, ctype = _strip_ctype(name, ctype, connection.get_protocol())
 
     # query NDS2
-    #found = connection.find_channels(name, ctype, dtype, *sample_rate)
-    found = connection.find_channels(name)
+    found = connection.find_channels(name, ctype, dtype, *sample_rate)
+    #found = connection.find_channels(name)
 
     # if don't care about defaults, just return now
     if not unique:
@@ -525,7 +525,6 @@ def _find_channel(connection, name, ctype, dtype, sample_rate, unique=False):
     if len(found) != 1:
         raise ValueError("unique NDS2 channel match not found for %r"
                          % name)
-
     return found
 
 
