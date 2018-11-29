@@ -616,10 +616,10 @@ class TimeSeriesBase(Series):
         metadata.setdefault('epoch', LIGOTimeGPS(buffer_.gps_seconds,
                                                  buffer_.gps_nanoseconds))
         metadata.setdefault('sample_rate', channel.sample_rate)
-        if not channel.unit:
-            unit = channel.unit
+        if channel.unit:
+            unit = 'ct'            
         else:
-            unit = 'ct'
+            unit = channel.unit
         metadata.setdefault('unit', unit)
         metadata.setdefault('name', str(channel))
         return cls(buffer_.data, **metadata)
