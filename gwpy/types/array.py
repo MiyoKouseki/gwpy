@@ -194,6 +194,8 @@ class Array(Quantity):
         return super(Array, self).__getattribute__(attr)
 
     def __getitem__(self, item):
+        if isinstance(item, list):
+            item = tuple(item)
         new = super(Array, self).__getitem__(item)
 
         # return scalar as a Quantity
@@ -395,10 +397,28 @@ class Array(Quantity):
         return self._wrap_function(numpy.abs, axis, **kwargs)
     abs.__doc__ = numpy.abs.__doc__
 
+    def angle(self, axis=None, **kwargs):
+        return self._wrap_function(numpy.angle, axis, **kwargs)
+    angle.__doc__ = numpy.angle.__doc__
+
+    def rad2deg(self, axis=None, **kwargs):
+        return self._wrap_function(numpy.rad2deg, axis, **kwargs)
+    rad2deg.__doc__ = numpy.rad2deg.__doc__
+
+    def deg2rad(self, axis=None, **kwargs):
+        return self._wrap_function(numpy.deg2rad, axis, **kwargs)
+    deg2rad.__doc__ = numpy.deg2rad.__doc__
+    
+    
     def median(self, axis=None, **kwargs):
         return self._wrap_function(numpy.median, axis, **kwargs)
     median.__doc__ = numpy.median.__doc__
 
+    def nanmedian(self, axis=None, **kwargs):
+        return self._wrap_function(numpy.nanmedian, axis, **kwargs)
+    nanmedian.__doc__ = numpy.nanmedian.__doc__
+    
+    
     def _to_own_unit(self, value, check_precision=True):
         if self.unit is None:
             try:

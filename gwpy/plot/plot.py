@@ -124,15 +124,16 @@ class Plot(figure.Figure):
 
         # add interactivity (scraped from pyplot.figure())
         backend_mod = get_backend_mod()
+
         try:
             manager = backend_mod.new_figure_manager_given_figure(num, self)
         except AttributeError:
             canvas = backend_mod.FigureCanvas(self)
-            manager = backend_mod.FigureManagerBase(canvas, 1)
-        manager._cidgcf = manager.canvas.mpl_connect(
-            'button_press_event',
-            lambda ev: _pylab_helpers.Gcf.set_active(manager))
-        _pylab_helpers.Gcf.set_active(manager)
+        #    manager = backend_mod.FigureManagerBase(canvas, 1)
+        #manager._cidgcf = manager.canvas.mpl_connect(
+        #    'button_press_event',
+        #    lambda ev: _pylab_helpers.Gcf.set_active(manager))
+        #_pylab_helpers.Gcf.set_active(manager)
         pyplot.draw_if_interactive()
 
     def _init_axes(self, data, method='plot',
@@ -467,6 +468,12 @@ class Plot(figure.Figure):
         # map X-axis limit from old axes
         if axes_kw['sharex'] is ax and not ax.get_autoscalex_on():
             axes_kw['xlim'] = ax.get_xlim()
+
+        # if axes uses GPS scaling, copy the epoch as well
+        try:
+            axes_kw['epoch'] = ax.get_epoch()
+        except AttributeError:
+            pass
 
         # add new axes
         if ax.get_axes_locator():

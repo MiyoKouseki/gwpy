@@ -25,6 +25,8 @@ one or more frametypes that contain data for that channel.
 import os.path
 import re
 
+from six.moves.urllib.parse import urlparse
+
 from ..time import to_gps
 from .cache import cache_segments
 from .gwf import (num_channels, iter_channel_names)
@@ -44,33 +46,6 @@ LOW_PRIORITY_TYPE = re.compile(
 )
 
 
-def connect(host=None, port=None):
-    """Open a new datafind connection
-
-    Parameters
-    ----------
-    host : `str`
-        name of datafind server to query
-
-    port : `int`
-        port of datafind server on host
-
-    Returns
-    -------
-    connection : :class:`~glue.datafind.GWDataFindHTTPConnection`
-        the new open connection
-    """
-    from glue import datafind
-
-    port = port and int(port)
-    if port is not None and port != 80:
-        cert, key = datafind.find_credential()
-        return datafind.GWDataFindHTTPSConnection(
-            host=host, port=port, cert_file=cert, key_file=key)
-
-    return datafind.GWDataFindHTTPConnection(host=host, port=port)
-
-
 def reconnect(connection):
     """Open a new datafind connection based on an existing connection
 
@@ -86,7 +61,8 @@ def reconnect(connection):
     newconn : :class:`~glue.datafind.GWDataFindHTTPConnection`
         the new open connection to the same `host:port` server
     """
-    return connect(connection.host, connection.port)
+    kw = {'context': connection._context} if connection.port != 80 else {}
+    return connection.__class__(connection.host, port=connection.port, **kw)
 
 
 def find_frametype(channel, gpstime=None, frametype_match=None,
@@ -161,6 +137,7 @@ def find_frametype(channel, gpstime=None, frametype_match=None,
     # this function is now horrendously complicated to support a large
     # number of different use cases, hopefully the comments are sufficient
 
+    import gwdatafind
     from ..detector import Channel
 
     # format channel names as list
@@ -218,7 +195,7 @@ def find_frametype(channel, gpstime=None, frametype_match=None,
         ifos.add(ifo)
 
         # connect and find list of all frame types
-        connection = connect(host, port)
+        connection = gwdatafind.connect(host, port)
         types = connection.find_types(ifo, match=frametype_match)
 
         # sort frametypes by likely requirements (to speed up matching)
@@ -258,9 +235,8 @@ def find_frametype(channel, gpstime=None, frametype_match=None,
             # find instance of this frametype
             try:
                 connection = reconnect(connection)
-                path = _find_latest_frame(connection, ifo, ftype,
-                                          gpstime=gpstime,
-                                          allow_tape=allow_tape)
+                path = _find_latest_url(connection, ifo, ftype,
+                                        gpstime=gpstime, allow_tape=allow_tape)
             except (RuntimeError, IOError):  # something went wrong
                 continue
 
@@ -269,9 +245,9 @@ def find_frametype(channel, gpstime=None, frametype_match=None,
                 gaps = 0
             else:
                 connection = reconnect(connection)
-                cache = connection.find_frame_urls(ifo, ftype, *gpssegment,
-                                                   urltype=urltype,
-                                                   on_gaps=on_gaps)
+                cache = connection.find_urls(ifo, ftype, *gpssegment,
+                                             urltype=urltype,
+                                             on_gaps=on_gaps)
                 csegs = cache_segments(cache)
                 gaps = abs(gpssegment) - abs(csegs)
 
@@ -425,28 +401,27 @@ def on_tape(*files):
 
 # -- utilities ----------------------------------------------------------------
 
-def _find_latest_frame(connection, ifo, frametype, gpstime=None,
-                       allow_tape=False):
-    """Find the latest framepath for a given frametype
+def _find_latest_url(connection, ifo, frametype, gpstime=None,
+                     allow_tape=False):
+    """Find the latest ``file://` URL for a given frametype
     """
     ifo = ifo[0]
     if gpstime is not None:
         gpstime = int(to_gps(gpstime))
     try:
         if gpstime is None:
-            frame = connection.find_latest(ifo, frametype, urltype='file')[0]
+            url = connection.find_latest(ifo, frametype, urltype='file')[0]
         else:
-            frame = connection.find_frame_urls(ifo, frametype, gpstime,
-                                               gpstime, urltype='file',
-                                               on_gaps='ignore')[0]
+            url = connection.find_urls(ifo, frametype, gpstime, gpstime,
+                                       urltype='file', on_gaps='ignore')[0]
     except (IndexError, RuntimeError):
-        raise RuntimeError("No frames found for {}-{}".format(ifo, frametype))
-    else:
-        if not os.access(frame.path, os.R_OK):
-            raise IOError("Latest frame file for {}-{} is unreadable: "
-                          "{}".format(ifo, frametype, frame.path))
-        if not allow_tape and on_tape(frame.path):
-            raise IOError("Latest frame file for {}-{} is on tape "
-                          "(pass allow_tape=True to force): "
-                          "{}".format(ifo, frametype, frame.path))
-        return frame.path
+        raise RuntimeError("No files found for {}-{}".format(ifo, frametype))
+    path = urlparse(url).path
+    if not os.access(path, os.R_OK):
+        raise IOError("Latest file for {}-{} is unreadable: "
+                      "{}".format(ifo, frametype, path))
+    if not allow_tape and on_tape(path):
+        raise IOError("Latest file for {}-{} is on tape "
+                      "(pass allow_tape=True to force): "
+                      "{}".format(ifo, frametype, path))
+    return url

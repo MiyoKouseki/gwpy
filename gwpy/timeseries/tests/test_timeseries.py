@@ -303,12 +303,25 @@ class TestTimeSeries(_TestTimeSeriesBase):
         with mock.patch('nds2.connection') as mock_connection, \
                 mock.patch('nds2.buffer', nds_buffer):
             mock_connection.return_value = nds_connection
+
             # use verbose=True to hit more lines
             ts2 = self.TEST_CLASS.fetch('L1:TEST', *ts.span, verbose=True)
+            utils.assert_quantity_sub_equal(ts, ts2, exclude=['channel'])
+
             # check open connection works
             ts2 = self.TEST_CLASS.fetch('L1:TEST', *ts.span, verbose=True,
                                         connection=nds_connection)
-        utils.assert_quantity_sub_equal(ts, ts2, exclude=['channel'])
+            utils.assert_quantity_sub_equal(ts, ts2, exclude=['channel'])
+
+            # check padding works
+            with pytest.warns(UserWarning):
+                ts2 = self.TEST_CLASS.fetch('L1:TEST', *ts.span.protract(10),
+                                            pad=-100., host='anything')
+            assert ts2.span == ts.span.protract(10)
+            assert ts2[0] == -100. * ts.unit
+            assert ts2[10] == ts[0]
+            assert ts2[-11] == ts[-1]
+            assert ts2[-1] == -100. * ts.unit
 
     @utils.skip_missing_dependency('nds2')
     def test_fetch_empty_iterate_error(self):
@@ -834,6 +847,17 @@ class TestTimeSeries(_TestTimeSeriesBase):
 
         tmax = whitened.times[whitened.argmax()]
         nptest.assert_almost_equal(tmax.value, glitchtime)
+
+    def test_convolve(self):
+        data = self.TEST_CLASS(
+            signal.hann(1024), sample_rate=512, epoch=-1
+        )
+        filt = numpy.array([1, 0])
+
+        # check that the 'valid' data are unchanged by this filter
+        convolved = data.convolve(filt)
+        assert convolved.size == data.size
+        utils.assert_allclose(convolved.value[1:-1], data.value[1:-1])
 
     def test_detrend(self, losc):
         assert not numpy.isclose(losc.value.mean(), 0.0, atol=1e-21)

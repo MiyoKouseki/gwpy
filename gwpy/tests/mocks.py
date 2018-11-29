@@ -126,6 +126,7 @@ def nds2_buffer(channel, data, epoch, sample_rate, unit):
     ndsbuffer = mock.create_autospec(nds2.buffer)
     ndsbuffer.length = len(data)
     ndsbuffer.channel = nds2_channel(channel, sample_rate, unit)
+    ndsbuffer.sample_rate = sample_rate
     ndsbuffer.gps_seconds = epoch.gpsSeconds
     ndsbuffer.gps_nanoseconds = epoch.gpsNanoSeconds
     ndsbuffer.data = data
@@ -175,6 +176,22 @@ def nds2_connection(host='nds.test.gwpy', port=31200, buffers=[]):
         return [b.channel for b in buffers if b.channel.name == name]
 
     NdsConnection.find_channels = find_channels
+
+    def get_availability(names):
+        out = []
+        for buff in buffers:
+            name = '{0.name},{0.type}'.format(Channel.from_nds2(buff.channel))
+            if name not in names:
+                segs = []
+            else:
+                start = buff.gps_seconds + buff.gps_nanoseconds * 1e-9
+                end = start + buff.sample_rate * buff.length
+                segs = [(start, end)]
+            out.append(nds2_availability(name, segs))
+        return out
+
+    NdsConnection.get_availability = get_availability
+
     return NdsConnection
 
 
@@ -193,27 +210,3 @@ def nds2_segment(segment):
     nds2seg.gps_stop = segment[1]
     return nds2seg
 
-
-# -- glue.datafind ------------------------------------------------------------
-
-def mock_find_credential():
-    return '/mock/cert/path', '/mock/key/path'
-
-
-def mock_datafind_connection(framefile):
-    try:
-        from lal.utils import CacheEntry
-    except ImportError as e:
-        pytest.skip(str(e))
-    from glue import datafind
-    ce = CacheEntry.from_T050017(framefile)
-    frametype = ce.description
-    # create mock up of connection object
-    DatafindConnection = mock.create_autospec(
-        datafind.GWDataFindHTTPConnection)
-    DatafindConnection.find_types.return_value = [frametype]
-    DatafindConnection.find_latest.return_value = [ce]
-    DatafindConnection.find_frame_urls.return_value = [ce]
-    DatafindConnection.host = 'mockhost'
-    DatafindConnection.port = 80
-    return DatafindConnection

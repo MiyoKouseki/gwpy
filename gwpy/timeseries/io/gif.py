@@ -16,13 +16,13 @@
 # You should have received a copy of the GNU General Public License
 # along with GWpy.  If not, see <http://www.gnu.org/licenses/>.
 
-"""Input/Output routines for the Array and its sub-classes.
+"""gif I/O registrations for gwpy.timeseries objects
 """
 
-from . import (  # pylint: disable=unused-import
-    hdf5,
-    ascii,
-    gif,
-)
+from ...types.io.gif import register_gif_series_io
+from .. import (TimeSeries, StateVector)
 
-__author__ = "Duncan Macleod <duncan.macleod@ligo.org>"
+# -- registration -------------------------------------------------------------
+
+register_gif_series_io(TimeSeries, format='gif')
+#register_gif_series_io(StateVector, format='gif')

@@ -314,7 +314,7 @@ class Spectrogram(Array2D):
             if operand == 'mean':
                 operand = self.mean(axis=0)
             elif operand == 'median':
-                operand = self.median(axis=0)
+                operand = self.nanmedian(axis=0)
             else:
                 raise ValueError("operand %r unrecognised, please give a "
                                  "Quantity or one of: 'mean', 'median'"
@@ -414,7 +414,8 @@ class Spectrogram(Array2D):
             the given percentile `FrequencySeries` calculated from this
             `SpectralVaraicence`
         """
-        out = scipy.percentile(self.value, percentile, axis=0)
+        #out = scipy.percentile(self.value, percentile, axis=0)
+        out = scipy.nanpercentile(self.value, percentile, axis=0)
         if self.name is not None:
             name = '{}: {} percentile'.format(self.name, _ordinal(percentile))
         else:
@@ -426,7 +427,7 @@ class Spectrogram(Array2D):
 
     def zpk(self, zeros, poles, gain, analog=True):
         """Filter this `Spectrogram` by applying a zero-pole-gain filter
-
+        
         Parameters
         ----------
         zeros : `array-like`

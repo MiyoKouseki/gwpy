@@ -53,7 +53,7 @@ from astropy.io import registry as io_registry
 
 from ..types import (Array2D, Series)
 from ..detector import (Channel, ChannelList)
-from ..io import datafind
+from ..io import datafind as io_datafind
 from ..time import (Time, LIGOTimeGPS, gps_types, to_gps)
 from ..utils import gprint
 
@@ -321,7 +321,9 @@ class TimeSeriesBase(Series):
             open NDS connection to use
 
         verbose : `bool`, optional
-            print verbose output about NDS progress, useful for debugging
+            print verbose output about NDS progress, useful for debugging;
+            if ``verbose`` is specified as a string, this defines the
+            prefix for the progress meter
 
         type : `int`, optional
             NDS2 channel type integer
@@ -491,7 +493,9 @@ class TimeSeriesBase(Series):
             allow reading from frame files on (slow) magnetic tape
 
         verbose : `bool`, optional
-            print verbose output about NDS progress.
+            print verbose output about read progress, if ``verbose``
+            is specified as a string, this defines the prefix for the
+            progress meter
 
         **readargs
             any other keyword arguments to be passed to `.read()`
@@ -541,7 +545,9 @@ class TimeSeriesBase(Series):
             retrieving data from tape if required
 
         verbose : `bool`, optional
-            print verbose output about NDS progress.
+            print verbose output about data access progress, if ``verbose``
+            is specified as a string, this defines the prefix for the
+            progress meter
 
         **kwargs
             other keyword arguments to pass to either
@@ -610,7 +616,11 @@ class TimeSeriesBase(Series):
         metadata.setdefault('epoch', LIGOTimeGPS(buffer_.gps_seconds,
                                                  buffer_.gps_nanoseconds))
         metadata.setdefault('sample_rate', channel.sample_rate)
-        metadata.setdefault('unit', channel.unit)
+        if channel.unit:
+            unit = 'ct'            
+        else:
+            unit = channel.unit
+        metadata.setdefault('unit', unit)
         metadata.setdefault('name', str(channel))
         return cls(buffer_.data, **metadata)
 
@@ -979,7 +989,9 @@ class TimeSeriesBaseDict(OrderedDict):
             check channels exist in database before asking for data
 
         verbose : `bool`, optional
-            print verbose output about NDS progress.
+            print verbose output about NDS download progress, if ``verbose``
+            is specified as a string, this defines the prefix for the
+            progress meter
 
         connection : `nds2.connection`, optional
             open NDS connection to use.
@@ -1008,7 +1020,7 @@ class TimeSeriesBaseDict(OrderedDict):
 
         if dtype is None:
             dtype = {}
-
+            
         # -- open a connection ------------------
 
         # open connection to specific host
@@ -1114,17 +1126,21 @@ class TimeSeriesBaseDict(OrderedDict):
             allow reading from frame files on (slow) magnetic tape
 
         verbose : `bool`, optional
-            print verbose output about NDS progress.
+            print verbose output about read progress, if ``verbose``
+            is specified as a string, this defines the prefix for the
+            progress meter
 
         **readargs
             any other keyword arguments to be passed to `.read()`
         """
+        import gwdatafind
+
         start = to_gps(start)
         end = to_gps(end)
 
         # -- find frametype(s)
         if frametype is None:
-            matched = datafind.find_best_frametype(
+            matched = io_datafind.find_best_frametype(
                 channels, start, end, frametype_match=frametype_match,
                 allow_tape=allow_tape)
             frametypes = {}
@@ -1161,9 +1177,8 @@ class TimeSeriesBaseDict(OrderedDict):
                     exc.args = "Cannot parse list of IFOs from channel names",
                     raise
             # find frames
-            connection = datafind.connect()
-            cache = connection.find_frame_urls(observatory, frametype, start,
-                                               end, urltype='file')
+            cache = gwdatafind.find_urls(observatory, frametype, start,
+                                         end, urltype='file')
             if not cache:
                 raise RuntimeError("No %s-%s frame files found for [%d, %d)"
                                    % (observatory, frametype, start, end))
@@ -1222,7 +1237,9 @@ class TimeSeriesBaseDict(OrderedDict):
             retrieving data from tape if required
 
         verbose : `bool`, optional
-            print verbose output about NDS progress.
+            print verbose output about data access progress, if ``verbose``
+            is specified as a string, this defines the prefix for the
+            progress meter
 
         **kwargs
             other keyword arguments to pass to either
@@ -1446,7 +1463,7 @@ class TimeSeriesBaseList(list):
         del self[i:]
         return self
 
-    def join(self, pad=0.0, gap='raise'):
+    def join(self, pad=None, gap=None):
         """Concatenate all of the elements of this list into a single object
 
         Parameters
@@ -1455,22 +1472,23 @@ class TimeSeriesBaseList(list):
             value with which to pad gaps
 
         gap : `str`, optional, default: `'raise'`
-            what to do in the event of a discontguity in the data, one of
+            what to do if there are gaps in the data, one of
 
-            - 'raise': raise an exception
-            - 'warn': print a warning
-            - 'ignore': append series as if there was no gap
-            - 'pad': pad the gap with a value
+            - ``'raise'`` - raise a `ValueError`
+            - ``'ignore'`` - remove gap and join data
+            - ``'pad'`` - pad gap with zeros
+
+            If `pad` is given and is not `None`, the default is ``'pad'``,
+            otherwise ``'raise'``.
 
         Returns
         -------
-        `TimeSeriesBase`
-             a single `TimeSeriesBase` covering the full span of all entries
-             in this list
+        series : `gwpy.types.TimeSeriesBase` subclass
+             a single series containing all data from each entry in this list
 
         See Also
         --------
-        TimeSeriesBase.append
+        TimeSeries.append
             for details on how the individual series are concatenated together
         """
         if not self:
