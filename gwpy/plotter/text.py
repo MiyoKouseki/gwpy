@@ -62,6 +62,10 @@ def unit_as_label(unit):
     >>> unit_as_label(Unit('m / s'))
     '[\mathrm{m}/\mathrm{s}]'
     """
+    print unit
+    if unit=='NONE':
+        print('! override unit from NONE to Count')
+        return '[Count]'
     if rcParams['text.usetex']:
         ustr = tex.unit_to_latex(unit)
     elif isinstance(unit, units.UnitBase):
