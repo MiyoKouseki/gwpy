@@ -59,7 +59,7 @@ from ..utils import gprint
 
 __author__ = 'Duncan Macleod <duncan.macleod@ligo.org>'
 
-__all__ = ['TimeSeriesBase', 'ArrayTimeSeries', 'TimeSeriesBaseDict']
+__all__ = ['TimeSeriesBase', 'TimeSeriesBaseDict', 'TimeSeriesBaseList']
 
 ASTROPY_2_0 = astropy_version >= '2.0'
 
@@ -1177,8 +1177,7 @@ class TimeSeriesBaseDict(OrderedDict):
                     exc.args = "Cannot parse list of IFOs from channel names",
                     raise
             # find frames
-            cache = gwdatafind.find_urls(observatory, frametype, start,
-                                         end, urltype='file')
+            cache = io_datafind.find_urls(observatory, frametype, start, end)
             if not cache:
                 raise RuntimeError("No %s-%s frame files found for [%d, %d)"
                                    % (observatory, frametype, start, end))
@@ -1254,7 +1253,10 @@ class TimeSeriesBaseDict(OrderedDict):
                 nds_kw[key] = val
 
         # try and find from frames
-        if os.getenv('LIGO_DATAFIND_SERVER') and not nds_kw:
+        if not nds_kw and (
+                os.getenv('LIGO_DATAFIND_SERVER') or
+                os.getenv('VIRGODATA')
+        ):
             if verbose:
                 gprint("Attempting to access data from frames...")
             try:

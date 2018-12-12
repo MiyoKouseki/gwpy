@@ -52,7 +52,6 @@ NDS1_HOSTNAME = re.compile(r'[a-z]1nds[0-9]\Z')
 
 DEFAULT_HOSTS = OrderedDict([
     (None, ('nds.ligo.caltech.edu', 31200)),
-    ('K1', ('10.68.10.121', 8088)), # add miyo
     ('H1', ('nds.ligo-wa.caltech.edu', 31200)),
     ('H0', ('nds.ligo-wa.caltech.edu', 31200)),
     ('L1', ('nds.ligo-la.caltech.edu', 31200)),
@@ -297,7 +296,7 @@ def connect(host, port=None):
         a new open connection to the given NDS host
     """
     if port is None:
-        return nds2.connection(host,8088)
+        return nds2.connection(host)
     return nds2.connection(host, port)
 
 
@@ -463,7 +462,6 @@ def find_channels(channels, connection=None, host=None, port=None,
 
     # query for channels
     out = []
-
     for name in _get_nds2_names(channels):
         out.extend(_find_channel(connection, name, type, dtype, sample_rate,
                                  unique=unique))
@@ -510,7 +508,6 @@ def _find_channel(connection, name, ctype, dtype, sample_rate, unique=False):
 
     # query NDS2
     found = connection.find_channels(name, ctype, dtype, *sample_rate)
-    #found = connection.find_channels(name)
 
     # if don't care about defaults, just return now
     if not unique:
@@ -526,6 +523,7 @@ def _find_channel(connection, name, ctype, dtype, sample_rate, unique=False):
     if len(found) != 1:
         raise ValueError("unique NDS2 channel match not found for %r"
                          % name)
+
     return found
 
 
@@ -599,9 +597,10 @@ def get_availability(channels, start, end,
     from ..segments import (Segment, SegmentList, SegmentListDict)
     connection.set_epoch(start, end)
     # map user-given real names to NDS names
-    names = map(_get_nds2_name,
-                find_channels(channels, epoch=(start, end),
-                              connection=connection, unique=True))
+    names = list(map(
+        _get_nds2_name, find_channels(channels, epoch=(start, end),
+                                      connection=connection, unique=True),
+    ))
     # query for availability
     result = connection.get_availability(names)
     # map to segment types
