@@ -617,9 +617,9 @@ class TimeSeriesBase(Series):
                                                  buffer_.gps_nanoseconds))
         metadata.setdefault('sample_rate', channel.sample_rate)
         if channel.unit:
-            unit = 'ct'            
-        else:
             unit = channel.unit
+        else:
+            unit = 'ct'
         metadata.setdefault('unit', unit)
         metadata.setdefault('name', str(channel))
         return cls(buffer_.data, **metadata)

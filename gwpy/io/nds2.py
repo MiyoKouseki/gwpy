@@ -52,6 +52,7 @@ NDS1_HOSTNAME = re.compile(r'[a-z]1nds[0-9]\Z')
 
 DEFAULT_HOSTS = OrderedDict([
     (None, ('nds.ligo.caltech.edu', 31200)),
+    ('K1', ('10.68.10.121', 8088)), # add miyo
     ('H1', ('nds.ligo-wa.caltech.edu', 31200)),
     ('H0', ('nds.ligo-wa.caltech.edu', 31200)),
     ('L1', ('nds.ligo-la.caltech.edu', 31200)),
@@ -296,7 +297,7 @@ def connect(host, port=None):
         a new open connection to the given NDS host
     """
     if port is None:
-        return nds2.connection(host)
+        return nds2.connection(host,8088)
     return nds2.connection(host, port)
 
 
