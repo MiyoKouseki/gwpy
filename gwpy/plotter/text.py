@@ -62,7 +62,7 @@ def unit_as_label(unit):
     >>> unit_as_label(Unit('m / s'))
     '[\mathrm{m}/\mathrm{s}]'
     """
-    print unit
+    #print unit
     if unit=='NONE':
         print('! override unit from NONE to Count')
         return '[Count]'

@@ -32,7 +32,7 @@ from astropy.io import registry
 from astropy.units import Quantity
 from astropy.utils.data import get_readable_fileobj
 
-from gwosc.locate import get_urls
+#from gwosc.locate import get_urls
 
 from .. import (StateVector, TimeSeries)
 from ...io import hdf5 as io_hdf5

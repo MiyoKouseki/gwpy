@@ -50,7 +50,7 @@ from numpy import inf
 from astropy.io import registry as io_registry
 from astropy.utils.data import get_readable_fileobj
 
-from gwosc import timeline
+#from gwosc import timeline
 
 from ..io.mp import read_multi as io_read_multi
 from ..time import to_gps, LIGOTimeGPS

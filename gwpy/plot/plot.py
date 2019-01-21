@@ -128,14 +128,6 @@ class Plot(figure.Figure):
         try:
             manager = backend_mod.new_figure_manager_given_figure(num, self)
         except AttributeError:
-<<<<<<< HEAD
-            canvas = backend_mod.FigureCanvas(self)
-        #    manager = backend_mod.FigureManagerBase(canvas, 1)
-        #manager._cidgcf = manager.canvas.mpl_connect(
-        #    'button_press_event',
-        #    lambda ev: _pylab_helpers.Gcf.set_active(manager))
-        #_pylab_helpers.Gcf.set_active(manager)
-=======
             upstream_mod = importlib.import_module(
                 pyplot.new_figure_manager.__module__)
             canvas = upstream_mod.FigureCanvasBase(self)
@@ -144,7 +136,6 @@ class Plot(figure.Figure):
             'button_press_event',
             lambda ev: _pylab_helpers.Gcf.set_active(manager))
         _pylab_helpers.Gcf.set_active(manager)
->>>>>>> upstream/develop
         pyplot.draw_if_interactive()
 
     def _init_axes(self, data, method='plot',
