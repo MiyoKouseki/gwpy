@@ -67,6 +67,8 @@ def read_gif_series(input_, array_type=Series, unpack=True, fs=None, **kwargs):
 
     try:
         yarr = fromfile(input_)
+        print yarr
+        #exit()
     except IOError as e: ## In python3, FileNotFoundError
         print('No such data in ',input_)
         yarr = np.zeros(60*fs)
