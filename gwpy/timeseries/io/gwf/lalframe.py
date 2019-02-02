@@ -176,7 +176,7 @@ def write(tsdict, outfile, start=None, end=None,
         try:
             idx = list(lalutils.LAL_DETECTORS.keys()).index(series.channel.ifo)
             detectors |= 1 << 2*idx
-        except (KeyError, AttributeError):
+        except (KeyError, AttributeError, ValueError):
             continue
 
     # create new frame
