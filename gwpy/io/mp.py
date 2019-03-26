@@ -95,13 +95,13 @@ def read_multi(flatten, cls, source, *args, **kwargs):
     # read files
     output = mp_utils.multiprocess_with_queues(
         nproc, _read_single_file, files, verbose=verbose, unit='files')
-
+    
     # raise exceptions (from multiprocessing, single process raises inline)
     for fobj, exc in output:
         if isinstance(exc, Exception):
             exc.args = ('Failed to read %s: %s' % (fobj, str(exc)),)
             raise exc
-
+        
     # return combined object
     _, out = zip(*output)
     return flatten(out)

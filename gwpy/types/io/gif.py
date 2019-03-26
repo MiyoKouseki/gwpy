@@ -48,27 +48,23 @@ def gps2datestr(gps):
 
 # -- read ---------------------------------------------------------------------
 
-def read_gif_series(input_, array_type=Series, unpack=True, fs=None, **kwargs):
+def read_gif_series(input_, array_type=Series, **kwargs):
     """Read a `Series` from an GIF file
 
     Parameters
     ----------
-    input : `str`, `file`
-        file to read
-
-    array_type : `type`
+    input_ : `str`, `file`
+        single input file
+    
+    array_type : `type`, optional
         desired return type
+    
     """
-    
-    fs = 200    
-    if isinstance(fs,type(None)):
-        raise ValueError('fs is not defined.')
-    
-    chname = kwargs.pop('name',None)
+    chname = kwargs.pop('name',None)    
     yarr = GifData.fromfile(input_, chname)
+    fs = GifData(chname).fs
     x0 = fname2gps(input_)
-    dx = 1.0/fs
-    arr = array_type(yarr,  x0=x0, dx=dx)
+    arr = array_type(yarr,  x0=x0, dx=1./fs)
     return arr
 
 # -- write --------------------------------------------------------------------
