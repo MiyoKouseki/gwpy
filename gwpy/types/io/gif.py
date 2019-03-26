@@ -29,8 +29,7 @@ import numpy as np
 from ...io import registry as io_registry
 from ...io.utils import identify_factory
 from .. import Series
-#from miyopy.gif import fname2gps
-
+from miyopy.gif import GifData
 __author__ = "Duncan Macleod <duncan.macleod@ligo.org>"
 
 # --
@@ -49,34 +48,23 @@ def gps2datestr(gps):
 
 # -- read ---------------------------------------------------------------------
 
-def read_gif_series(input_, array_type=Series, unpack=True, fs=None, **kwargs):
+def read_gif_series(input_, array_type=Series, **kwargs):
     """Read a `Series` from an GIF file
 
     Parameters
     ----------
-    input : `str`, `file`
-        file to read
-
-    array_type : `type`
+    input_ : `str`, `file`
+        single input file
+    
+    array_type : `type`, optional
         desired return type
+    
     """
-    #FileNotFoundError
-    fs = 200
-    if isinstance(fs,type(None)):
-        raise ValueError('fs is not defined.')
-
-    try:
-        yarr = fromfile(input_)
-    except IOError as e: ## In python3, FileNotFoundError
-        print('No such data in ',input_)
-        yarr = np.zeros(60*fs)
-        yarr[:] = np.nan
-        
+    chname = kwargs.pop('name',None)    
+    yarr = GifData.fromfile(input_, chname)
+    fs = GifData(chname).fs
     x0 = fname2gps(input_)
-    yarr = decimate(yarr,int(fs/8))
-    dx = 1./8
-    arr= array_type(yarr, unit='strain',  x0=x0, dx=dx)
-    #print(arr)
+    arr = array_type(yarr,  x0=x0, dx=1./fs)
     return arr
 
 # -- write --------------------------------------------------------------------

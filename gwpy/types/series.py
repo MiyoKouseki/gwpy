@@ -421,6 +421,7 @@ class Series(Array):
             kwargs.setdefault('xlim', (self.dx.value, self.xspan[1]))
 
         # make plot
+        #print(kwargs)
         plot = Plot(self, method=method, **kwargs)
 
         # set default y-axis label (xlabel is set by Plot())

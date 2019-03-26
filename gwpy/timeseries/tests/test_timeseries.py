@@ -43,6 +43,7 @@ from ...spectrogram import Spectrogram
 from ...tests import (mocks, utils)
 from ...tests.mocks import mock
 from ...time import LIGOTimeGPS
+from ...utils.misc import null_context
 from .. import (TimeSeries, TimeSeriesDict, TimeSeriesList, StateTimeSeries)
 from .test_core import (TestTimeSeriesBase as _TestTimeSeriesBase,
                         TestTimeSeriesBaseDict as _TestTimeSeriesBaseDict,
@@ -296,10 +297,12 @@ class TestTimeSeries(_TestTimeSeriesBase):
             pass
 
     @utils.skip_missing_dependency('nds2')
-    def test_fetch(self):
+    @pytest.mark.parametrize('protocol', (1, 2))
+    def test_fetch(self, protocol):
         ts = self.create(name='L1:TEST', t0=1000000000, unit='m')
         nds_buffer = mocks.nds2_buffer_from_timeseries(ts)
-        nds_connection = mocks.nds2_connection(buffers=[nds_buffer])
+        nds_connection = mocks.nds2_connection(buffers=[nds_buffer],
+                                               protocol=protocol)
         with mock.patch('nds2.connection') as mock_connection, \
                 mock.patch('nds2.buffer', nds_buffer):
             mock_connection.return_value = nds_connection
@@ -313,8 +316,9 @@ class TestTimeSeries(_TestTimeSeriesBase):
                                         connection=nds_connection)
             utils.assert_quantity_sub_equal(ts, ts2, exclude=['channel'])
 
-            # check padding works
-            with pytest.warns(UserWarning):
+            # check padding works (with warning for nds2-server connections)
+            ctx = pytest.warns(UserWarning) if protocol > 1 else null_context()
+            with ctx:
                 ts2 = self.TEST_CLASS.fetch('L1:TEST', *ts.span.protract(10),
                                             pad=-100., host='anything')
             assert ts2.span == ts.span.protract(10)
@@ -828,23 +832,26 @@ class TestTimeSeries(_TestTimeSeriesBase):
     def test_whiten(self):
         # create noise with a glitch in it at 1000 Hz
         noise = self.TEST_CLASS(
-            numpy.random.normal(loc=1, size=16384 * 10), sample_rate=16384,
-            epoch=-5).zpk([], [0], 1)
+            numpy.random.normal(loc=1, scale=.5, size=16384 * 64),
+            sample_rate=16384, epoch=-32).zpk([], [0], 1)
         glitchtime = 0.5
         glitch = signal.gausspulse(noise.times.value - glitchtime,
                                    bw=100) * 1e-4
         data = noise + glitch
 
-        # whiten and test that the max amplitude is recovered at the glitch
+        # when the input is stationary Gaussian noise, the output should have
+        # zero mean and unit variance
+        whitened = noise.whiten(detrend='linear')
+        assert whitened.size == noise.size
+        nptest.assert_almost_equal(whitened.mean().value, 0.0, decimal=2)
+        nptest.assert_almost_equal(whitened.std().value, 1.0, decimal=2)
+
+        # when a loud signal is present, the max amplitude should be recovered
+        # at the time of that signal
         tmax = data.times[data.argmax()]
         assert not numpy.isclose(tmax.value, glitchtime)
 
-        whitened = data.whiten(2, 1)
-
-        assert whitened.size == noise.size
-        nptest.assert_almost_equal(whitened.mean().value, 0.0, decimal=4)
-        nptest.assert_almost_equal(whitened.std().value, 1.0, decimal=4)
-
+        whitened = data.whiten(detrend='linear')
         tmax = whitened.times[whitened.argmax()]
         nptest.assert_almost_equal(tmax.value, glitchtime)
 
@@ -858,6 +865,30 @@ class TestTimeSeries(_TestTimeSeriesBase):
         convolved = data.convolve(filt)
         assert convolved.size == data.size
         utils.assert_allclose(convolved.value[1:-1], data.value[1:-1])
+
+    def test_correlate(self):
+        # create noise and a glitch template at 1000 Hz
+        noise = self.TEST_CLASS(
+            numpy.random.normal(size=16384 * 64), sample_rate=16384, epoch=-32
+            ).zpk([], [1], 1)
+        glitchtime = -16.5
+        glitch = self.TEST_CLASS(
+            signal.gausspulse(numpy.arange(-1, 1, 1./16384), bw=100),
+            sample_rate=16384, epoch=glitchtime-1)
+
+        # check that, without a signal present, we only see background
+        snr = noise.correlate(glitch, whiten=True)
+        tmax = snr.times[snr.argmax()]
+        assert snr.size == noise.size
+        assert not numpy.isclose(tmax.value, glitchtime)
+        nptest.assert_almost_equal(snr.mean().value, 0.0, decimal=1)
+        nptest.assert_almost_equal(snr.std().value, 1.0, decimal=1)
+
+        # inject and recover the glitch
+        data = noise.inject(glitch * 1e-4)
+        snr = data.correlate(glitch, whiten=True)
+        tmax = snr.times[snr.argmax()]
+        nptest.assert_almost_equal(tmax.value, glitchtime)
 
     def test_detrend(self, losc):
         assert not numpy.isclose(losc.value.mean(), 0.0, atol=1e-21)
@@ -898,7 +929,7 @@ class TestTimeSeries(_TestTimeSeriesBase):
         assert isinstance(qspecgram, Spectrogram)
         assert qspecgram.shape == (4000, 2403)
         assert qspecgram.q == 5.65685424949238
-        nptest.assert_almost_equal(qspecgram.value.max(), 156.0411964254892)
+        nptest.assert_almost_equal(qspecgram.value.max(), 156.43279233248313)
 
         # test whitening args
         asd = losc.asd(2, 1, method='scipy-welch')
@@ -924,6 +955,15 @@ class TestTimeSeries(_TestTimeSeriesBase):
         losc.q_transform(method='scipy-welch', norm=False)
         with pytest.raises(ValueError):
             losc.q_transform(method='scipy-welch', norm='blah')
+
+    def test_q_transform_logf(self, losc):
+        # test q-transform with log frequency spacing
+        qspecgram = losc.q_transform(method='scipy-welch', fftlength=2,
+                                     fres=500, logf=True)
+        assert isinstance(qspecgram, Spectrogram)
+        assert qspecgram.shape == (4000, 500)
+        assert qspecgram.q == 5.65685424949238
+        nptest.assert_almost_equal(qspecgram.value.max(), 156.43222488296405)
 
     def test_boolean_statetimeseries(self, array):
         comp = array >= 2 * array.unit

@@ -151,13 +151,15 @@ class CliProduct(object):
     action = None
 
     def __init__(self, args):
-        self._finalize_arguments(args)  # post-process args
 
         #: input argument Namespace
         self.args = args
 
         #: verbosity
         self.verbose = 0 if args.silent else args.verbose
+
+        # NB: finalizing may want to log if we're being verbose
+        self._finalize_arguments(args)  # post-process args
 
         if args.style:  # apply custom styling
             try:
@@ -319,6 +321,8 @@ class CliProduct(object):
                            help='Frequency for lowpass filter')
         group.add_argument('--notch', type=to_hz, nargs='*',
                            help='Frequency for notch (can give multiple)')
+        group.add_argument('--pad', type=str,
+                           help='give 0 only')        
         return group
 
     # -- plot options
@@ -451,16 +455,22 @@ class CliProduct(object):
         # determine how we're supposed get our data
         source = 'cache' if args.framecache is not None else 'nds2'
 
+        # pad optinon
+        if args.pad:
+            import numpy
+            pad = int(args.pad)
+
         # Get the data from NDS or Frames
         for start in self.start_list:
             end = start + self.duration
             if source == 'nds2':
                 tsd = TimeSeriesDict.get(self.chan_list, start, end,
                                          verbose=verb, host=args.nds2_server,
-                                         frametype=args.frametype)
+                                         frametype=args.frametype, pad=pad)
             else:
                 tsd = TimeSeriesDict.read(args.framecache, self.chan_list,
                                           start=start, end=end)
+
 
             for data in tsd.values():
                 if str(data.unit) in BAD_UNITS:
