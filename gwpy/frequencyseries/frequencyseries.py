@@ -435,3 +435,5 @@ class FrequencySeries(Series):
         return types.FrequencySeries(self.value,
                                      delta_f=self.df.to('Hz').value,
                                      epoch=epoch, copy=copy)
+    def rms(self):
+        return self[::-1].cumsum()[::-1]*self.f0
