@@ -105,7 +105,7 @@ def register_gif_series_io(array_type, format='gif', identify=True,
         kwgs = defaults.copy()
         kwgs.update(kwargs)
         return write_gif_series(series, output, **kwgs)
-
+    
     io_registry.register_reader(format, array_type, _read)
     io_registry.register_writer(format, array_type, _write)
     if identify:

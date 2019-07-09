@@ -103,5 +103,8 @@ def read_multi(flatten, cls, source, *args, **kwargs):
             raise exc
         
     # return combined object
+    if not output:
+        raise ValueError('No data found.. Please check source files.')
+        
     _, out = zip(*output)
     return flatten(out)

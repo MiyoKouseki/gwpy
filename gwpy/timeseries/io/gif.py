@@ -20,9 +20,10 @@
 """
 
 from ...types.io.gif import register_gif_series_io
+#from ...types.io.ascii import register_ascii_series_io
 from .. import (TimeSeries, StateVector)
 
 # -- registration -------------------------------------------------------------
 
 register_gif_series_io(TimeSeries, format='gif')
-#register_gif_series_io(StateVector, format='gif')
+register_gif_series_io(StateVector, format='gif')
