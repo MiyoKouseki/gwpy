@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -22,15 +22,17 @@
 from __future__ import division
 
 from decimal import Decimal
-from math import isinf
 from numbers import Number
 
 import numpy
 
 from matplotlib import (ticker, docstring)
-from matplotlib.scale import (register_scale, LinearScale,
-                              get_scale_docs, get_scale_names)
+from matplotlib.scale import (register_scale, LinearScale, get_scale_names)
 from matplotlib.transforms import Transform
+try:
+    from matplotlib.scale import _get_scale_docs as get_scale_docs
+except ImportError:  # matplotlib < 3.1
+    from matplotlib.scale import get_scale_docs
 
 from astropy import units
 
@@ -61,6 +63,18 @@ def register_gps_scale(scale_class):
     """
     register_scale(scale_class)
     GPS_SCALES[scale_class.name] = scale_class
+
+
+def _truncate(f, n):
+    """Truncates/pads a float `f` to `n` decimal places without rounding
+
+    From https://stackoverflow.com/a/783927/1307974 (CC-BY-SA)
+    """
+    s = "{}".format(f)
+    if "e" in s or "E" in s:
+        return "{0:.{1}f}".format(f, n)
+    i, p, d = s.partition(".")
+    return ".".join([i, (d+"0"*n)[:n]])
 
 
 # -- base mixin for all GPS manipulations -------------------------------------
@@ -192,11 +206,10 @@ class GPSTransformBase(GPSMixin, Transform):
         values = numpy.asarray(values)
 
         # handle simple or data transformations with floats
-        if any([
-                epoch == 0,  # no large additions
-                scale == 1,  # no multiplications
-                self._parents,  # part of composite transform (from draw())
-        ]):
+        if self._parents or (  # part of composite transform (from draw())
+                epoch == 0 and  # no large additions
+                scale == 1  # no multiplications
+        ):
             return self._transform(values, float(epoch), float(scale))
 
         # otherwise do things carefully (and slowly) with Decimals
@@ -217,15 +230,9 @@ class GPSTransformBase(GPSMixin, Transform):
     def _transform_decimal(cls, value, epoch, scale):
         """Transform to/from GPS using `decimal.Decimal` for precision
         """
-        vdec = Decimal(repr(value))
-        edec = Decimal(repr(epoch))
-        sdec = Decimal(repr(scale))
-
-        # fix rounding errors
-        vdecq = vdec.quantize(edec)
-        if abs(vdec - vdecq) < 1e-6:
-            vdec = vdecq
-
+        vdec = Decimal(_truncate(value, 12))
+        edec = Decimal(_truncate(epoch, 12))
+        sdec = Decimal(_truncate(scale, 12))
         return type(value)(cls._transform(vdec, edec, sdec))
 
 
@@ -401,10 +408,22 @@ class GPSScale(GPSMixin, LinearScale):
         axis.set_minor_locator(GPSAutoMinorLocator())
         axis.set_minor_formatter(ticker.NullFormatter())
 
+    @staticmethod
+    def _lim(axis):
+        # if autoscaling and datalim is set, use it
+        autoscale_on_var = "get_autoscale{}_on".format(axis.axis_name)
+        dlim = tuple(axis.get_data_interval())
+        if (
+                getattr(axis.axes, autoscale_on_var)() and
+                not numpy.isinf(dlim).any()
+        ):
+            return dlim
+        # otherwise use the view lim
+        return tuple(axis.get_view_interval())
+
     def _auto_epoch(self, axis):
-        epoch = round(max(
-            x for x in (axis.get_data_interval()[0],
-                        axis.get_view_interval()[0]) if not isinf(x)))
+        # use the lower data/view limit as the epoch
+        epoch = round(self._lim(axis)[0])
 
         # round epoch in successive units for large scales
         unit = self.get_unit()
@@ -419,9 +438,8 @@ class GPSScale(GPSMixin, LinearScale):
                 date = date.replace(**{fields[i]: 0})
         return int(to_gps(date))
 
-    @staticmethod
-    def _auto_unit(axis):
-        vmin, vmax = sorted(axis.get_view_interval())
+    def _auto_unit(self, axis):
+        vmin, vmax = self._lim(axis)
         duration = vmax - vmin
         for scale in TIME_UNITS[::-1]:
             base = scale.decompose().scale
@@ -469,6 +487,8 @@ def _gps_scale_factory(unit):
                                  unit.names[0]))
 
         def __init__(self, axis, epoch=None):
+            """
+            """
             super(FixedGPSScale, self).__init__(axis, epoch=epoch, unit=unit)
     return FixedGPSScale
 
@@ -481,4 +501,5 @@ for _unit in TIME_UNITS:
 # update the docstring for matplotlib scale methods
 docstring.interpd.update(
     scale=' | '.join([repr(x) for x in get_scale_names()]),
-    scale_docs=get_scale_docs().rstrip())
+    scale_docs=get_scale_docs().rstrip(),
+)

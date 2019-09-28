@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2018)
+# Copyright (C) Duncan Macleod (2018-2019)
 #
 # This file is part of GWpy.
 #
@@ -33,7 +33,6 @@ from ...time import LIGOTimeGPS
 from .. import SegmentAxes
 from ..segments import SegmentRectangle
 from .test_axes import TestAxes as _TestAxes
-from .utils import usetex  # pylint: disable=unused-import
 
 # extract color cycle
 COLOR_CONVERTER = ColorConverter()
@@ -78,7 +77,7 @@ class TestSegmentAxes(_TestAxes):
         c = ax.plot_flag(flag, known='fancy')
 
     def test_plot_dqflag(self, ax, flag):
-        with pytest.warns(DeprecationWarning):
+        with pytest.deprecated_call():
             ax.plot_dqflag(flag)
         assert ax.collections  # make sure it plotted something
 
@@ -99,7 +98,7 @@ class TestSegmentAxes(_TestAxes):
         assert colls[0].get_label() == 'anything'
 
     def test_plot_dqdict(self, ax, flag):
-        with pytest.warns(DeprecationWarning):
+        with pytest.deprecated_call():
             ax.plot_dqdict(DataQualityDict(a=flag))
 
     def test_plot_segmentlist(self, ax, segments):
@@ -149,6 +148,11 @@ class TestSegmentAxes(_TestAxes):
         # just check that the LIGOTimeGPS repr is in place
         value = 1234567890.123
         assert ax.format_xdata(value) == str(LIGOTimeGPS(value))
+
+    # -- disable tests from upstream
+
+    def test_imshow(self):
+        return NotImplemented
 
 
 def test_segmentrectangle():

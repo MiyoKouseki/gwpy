@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -20,7 +20,6 @@
 """
 
 import os
-import warnings
 from argparse import ArgumentParser
 
 import pytest
@@ -33,8 +32,8 @@ from ...cli import cliproduct
 from ...frequencyseries import FrequencySeries
 from ...timeseries import TimeSeries
 from ...plot import Plot
-from ...tests import (utils, mocks)
-from ...tests.mocks import mock
+from ...testing import (utils, mocks)
+from ...testing.compat import mock
 
 __author__ = 'Duncan Macleod <duncan.macleod@ligo.org>'
 
@@ -75,11 +74,6 @@ def test_to_float():
     assert to_s('4ms') == 0.004
 
 
-def test_unique():
-    a = [1, 2, 4, 3, 5, 4, 5, 3]
-    assert cliproduct.unique(a) == [1, 2, 4, 3, 5]
-
-
 # -- class tests --------------------------------------------------------------
 
 class _TestCliProduct(object):
@@ -118,11 +112,11 @@ class _TestCliProduct(object):
         if prod.plot:
             prod.plot.close()
 
-    @classmethod
-    @pytest.fixture
-    def dataprod(cls, prod):
-        """Returns a `CliProduct` with data
-        """
+    @staticmethod
+    def _prod_add_data(prod):
+        # we need this method separate, rather than in dataprod, so that
+        # we can have classes override the dataprod fixture with extra
+        # stuff properly
         dur = prod.duration
         fs = 512
 
@@ -138,9 +132,20 @@ class _TestCliProduct(object):
 
     @classmethod
     @pytest.fixture
+    def dataprod(cls, prod):
+        """Returns a `CliProduct` with data
+        """
+        return cls._prod_add_data(prod)
+
+    @staticmethod
+    def _plotprod_init(prod):
+        prod.plot = pyplot.figure(FigureClass=Plot)
+        return prod
+
+    @classmethod
+    @pytest.fixture
     def plotprod(cls, dataprod):
-        dataprod.plot = pyplot.figure(FigureClass=Plot)
-        return dataprod
+        return cls._plotprod_init(dataprod)
 
     # -- tests ----------------------------------
 
@@ -181,7 +186,11 @@ class _TestCliProduct(object):
             mocker.return_value = conn
             prod.get_data()
 
-        assert prod.timeseries[0] == data[0]
+        utils.assert_quantity_sub_equal(
+            prod.timeseries[0],
+            data[0],
+            exclude=("channel",),
+        )
 
     @pytest.mark.parametrize('ftype, filt', [
         ('highpass', {'highpass': 10}),
@@ -261,7 +270,7 @@ class _TestImageProduct(_TestCliProduct):
     @classmethod
     @pytest.fixture
     def plotprod(cls, dataprod):
-        super(_TestImageProduct, cls).plotprod(dataprod)
+        cls._plotprod_init(dataprod)
         dataprod.plot.gca().pcolormesh(dataprod.result)
         return dataprod
 
@@ -296,7 +305,7 @@ class _TestFrequencyDomainProduct(_TestCliProduct):
     @classmethod
     @pytest.fixture
     def dataprod(cls, prod):
-        super(_TestFrequencyDomainProduct, cls).dataprod(prod)
+        cls._prod_add_data(prod)
         fftlength = prod.args.secpfft
         for i, ts in enumerate(prod.timeseries):
             nsamp = int(fftlength * 512 / 2.) + 1

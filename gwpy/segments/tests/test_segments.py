@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2014)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -19,13 +19,16 @@
 """Tests for :mod:`gwpy.segments.segments`
 """
 
-import os
-import shutil
-import tempfile
+from __future__ import print_function
 
 import pytest
 
-from ...tests.utils import (assert_segmentlist_equal, TemporaryFilename)
+import h5py
+
+from astropy.table import Table
+
+from ...testing.utils import (
+    assert_segmentlist_equal, assert_table_equal, TemporaryFilename)
 from ...time import LIGOTimeGPS
 from .. import (Segment, SegmentList)
 
@@ -68,12 +71,34 @@ class TestSegmentList(object):
 
     # -- test methods ---------------------------
 
+    def test_extent(self, segmentlist):
+        """Test `gwpy.segments.SegmentList.extent returns the right type
+        """
+        extent = segmentlist.extent()
+        assert isinstance(extent, self.ENTRY_CLASS)
+        assert extent == Segment(1, 10)
+
     def test_coalesce(self):
         segmentlist = self.create((1, 2), (3, 4), (4, 5))
         c = segmentlist.coalesce()
         assert c is segmentlist
         assert_segmentlist_equal(c, [(1, 2), (3, 5)])
         assert isinstance(c[0], self.ENTRY_CLASS)
+
+    def test_to_table(self, segmentlist):
+        segtable = segmentlist.to_table()
+        assert_table_equal(
+            segtable,
+            Table(
+                rows=[
+                    (0, 1, 2, 1),
+                    (1, 3, 4, 1),
+                    (2, 4, 6, 2),
+                    (3, 8, 10, 2),
+                ],
+                names=('index', 'start', 'end', 'duration'),
+            ),
+        )
 
     # -- test I/O -------------------------------
 
@@ -94,6 +119,23 @@ class TestSegmentList(object):
             sl2 = self.TEST_CLASS.read(tmp, gpstype=float)
             assert isinstance(sl2[0][0], float)
 
+    def test_read_write_segwizard_strict(self):
+        with TemporaryFilename(suffix='.txt') as tmp:
+            with open(tmp, "w") as tmpf:
+                print("0 0 1 .5", file=tmpf)
+            with pytest.raises(ValueError):
+                self.TEST_CLASS.read(tmp, strict=True, format='segwizard')
+            sl = self.TEST_CLASS.read(tmp, strict=False, format='segwizard')
+            assert_segmentlist_equal(sl, [(0, 1)])
+
+    def test_read_write_segwizard_twocol(self):
+        with TemporaryFilename(suffix='.txt') as tmp:
+            with open(tmp, "w") as tmpf:
+                print("0 1", file=tmpf)
+                print("2 3", file=tmpf)
+            sl = self.TEST_CLASS.read(tmp, format='segwizard')
+            assert_segmentlist_equal(sl, [(0, 1), (2, 3)])
+
     @pytest.mark.parametrize('ext', ('.hdf5', '.h5'))
     def test_read_write_hdf5(self, segmentlist, ext):
         with TemporaryFilename(suffix=ext) as fp:
@@ -105,6 +147,11 @@ class TestSegmentList(object):
 
             sl2 = self.TEST_CLASS.read(fp, path='test-segmentlist')
             assert_segmentlist_equal(sl2, segmentlist)
+
+            # check we can read directly from the h5 object
+            with h5py.File(fp, "r") as h5f:
+                sl2 = self.TEST_CLASS.read(h5f["test-segmentlist"])
+                assert_segmentlist_equal(sl2, segmentlist)
 
             # check overwrite kwarg
             with pytest.raises(IOError):

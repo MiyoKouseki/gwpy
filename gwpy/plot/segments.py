@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -30,7 +30,6 @@ from matplotlib.patches import Rectangle
 
 import ligo.segments
 
-from ..segments import (Segment, DataQualityFlag, DataQualityDict)
 from .axes import Axes
 from .colors import tint
 from .text import to_string
@@ -80,6 +79,8 @@ class SegmentAxes(Axes):
         self.yaxis.set_major_formatter(formatter)
 
     def _plot_method(self, obj):
+        from ..segments import (DataQualityFlag, DataQualityDict)
+
         if isinstance(obj, DataQualityDict):
             return self.plot_dict
         if isinstance(obj, DataQualityFlag):
@@ -114,9 +115,9 @@ class SegmentAxes(Axes):
         Line2D
             the `~matplotlib.lines.Line2D` for this line layer
 
-        See Also
+        See also
         --------
-        :meth:`matplotlib.axes.Axes.plot`
+        matplotlib.axes.Axes.plot
             for a full description of acceptable ``*args` and ``**kwargs``
         """
         out = []
@@ -452,7 +453,7 @@ class SegmentFormatter(Formatter):
         for patch in self.axis.axes.patches:
             if not patch.get_label() or patch.get_label() == '_nolegend_':
                 continue
-            if t in Segment(*patch.get_bbox().intervaly):
+            if t in ligo.segments.segment(*patch.get_bbox().intervaly):
                 return patch.get_label()
         return ''
 

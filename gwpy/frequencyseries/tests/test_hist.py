@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -30,7 +30,7 @@ from matplotlib import rc_context
 from astropy import units
 
 from ...segments import Segment
-from ...tests import utils
+from ...testing import utils
 from ...types.tests.test_array2d import TestArray2D as _TestArray2D
 from .. import SpectralVariance
 

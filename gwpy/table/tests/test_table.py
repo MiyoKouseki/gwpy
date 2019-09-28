@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2014)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -23,14 +23,18 @@ import os.path
 import shutil
 import tempfile
 from io import BytesIO
+from ssl import SSLError
 
 from six import PY2
+from six.moves.urllib.error import URLError
 
 import pytest
 
 import sqlparse
 
-from numpy import (random, isclose, dtype)
+from numpy import (random, isclose, dtype, asarray)
+from numpy.testing import assert_array_equal
+from numpy.ma.core import MaskedConstant
 
 import h5py
 
@@ -41,8 +45,8 @@ from astropy.table import vstack
 from ...frequencyseries import FrequencySeries
 from ...io import ligolw as io_ligolw
 from ...segments import (Segment, SegmentList)
-from ...tests import utils
-from ...tests.mocks import mock
+from ...testing import utils
+from ...testing.compat import mock
 from ...time import LIGOTimeGPS
 from ...timeseries import (TimeSeries, TimeSeriesDict)
 from .. import (Table, EventTable, filters)
@@ -79,7 +83,7 @@ def mock_hacr_connection(table, start, stop):
                 str, list(cursor._query.get_sublists())[0].get_identifiers()))
             selections = list(map(
                 str, list(cursor._query.get_sublists())[2].get_sublists()))
-            return filter_table(table, selections[3:])[columns]
+            return map(tuple, filter_table(table, selections[3:])[columns])
 
     cursor.fetchall = fetchall
 
@@ -115,9 +119,36 @@ class TestTable(object):
     def table(cls):
         return cls.create(100, ['time', 'snr', 'frequency'])
 
+    @staticmethod
+    @pytest.fixture()
+    def llwtable():
+        from ligo.lw.lsctables import (New, SnglBurstTable)
+        llwtab = New(SnglBurstTable, columns=["peak_frequency", "snr"])
+        for i in range(10):
+            row = llwtab.RowType()
+            row.peak_frequency = float(i)
+            row.snr = float(i)
+            llwtab.append(row)
+        return llwtab
+
     # -- test I/O -------------------------------
 
-    @utils.skip_missing_dependency('glue.ligolw.lsctables')
+    @utils.skip_missing_dependency('ligo.lw.lsctables')
+    def test_ligolw(self, llwtable):
+        tab = self.TABLE(llwtable)
+        assert set(tab.colnames) == {"peak_frequency", "snr"}
+        assert_array_equal(tab["snr"], llwtable.getColumnByName("snr"))
+
+    @utils.skip_missing_dependency('ligo.lw.lsctables')
+    def test_ligolw_rename(self, llwtable):
+        tab = self.TABLE(llwtable, rename={"peak_frequency": "frequency"})
+        assert set(tab.colnames) == {"frequency", "snr"}
+        assert_array_equal(
+            tab["frequency"],
+            llwtable.getColumnByName("peak_frequency"),
+        )
+
+    @utils.skip_missing_dependency('ligo.lw.lsctables')
     @pytest.mark.parametrize('ext', ['xml', 'xml.gz'])
     def test_read_write_ligolw(self, ext):
         table = self.create(
@@ -144,7 +175,7 @@ class TestTable(object):
             assert t2.meta.get('tablename', None) == 'sngl_burst'
 
             # check numpy type casting works
-            from glue.ligolw.lsctables import LIGOTimeGPS as LigolwGPS
+            from ligo.lw.lsctables import LIGOTimeGPS as LigolwGPS
             t3 = _read(columns=['peak'])
             assert isinstance(t3['peak'][0], LigolwGPS)
             t3 = _read(columns=['peak'], use_numpy_dtypes=True)
@@ -206,6 +237,52 @@ class TestTable(object):
                                       'one sngl_burst table')
 
     @utils.skip_missing_dependency('glue.ligolw.lsctables')
+    def test_read_write_ligolw_ilwdchar_compat(self):
+        from glue.ligolw.ilwd import get_ilwdchar_class
+        from glue.ligolw.lsctables import SnglBurstTable
+
+        eid_type = get_ilwdchar_class("sngl_burst", "event_id")
+
+        table = self.create(
+            100,
+            ["peak", "snr", "central_freq", "event_id"],
+            ["f8", "f4", "f4", "i8"],
+        )
+        with tempfile.NamedTemporaryFile(suffix=".xml") as tmp:
+            # write table with ilwdchar_compat=True
+            table.write(tmp, format="ligolw", tablename="sngl_burst",
+                        ilwdchar_compat=True)
+
+            # read raw ligolw and check type is correct
+            llw = io_ligolw.read_table(tmp, tablename="sngl_burst",
+                                       ilwdchar_compat=True)
+            assert type(llw.getColumnByName("event_id")[0]) is eid_type
+
+            # reset IDs to 0
+            SnglBurstTable.reset_next_id()
+
+            # read without explicit use of ilwdchar_compat
+            t2 = self.TABLE.read(tmp, columns=table.colnames)
+            assert type(t2[0]["event_id"]) is eid_type
+
+            # read again with explicit use of ilwdchar_compat
+            SnglBurstTable.reset_next_id()
+            utils.assert_table_equal(
+                self.TABLE.read(tmp, columns=table.colnames,
+                                ilwdchar_compat=True),
+                t2,
+            )
+
+            # and check that ilwdchar_compat=True, use_numpy_dtypes=True works
+            SnglBurstTable.reset_next_id()
+            utils.assert_table_equal(
+                self.TABLE.read(tmp, columns=table.colnames,
+                                ilwdchar_compat=True, use_numpy_dtypes=True),
+                table,
+                almost_equal=True,
+            )
+
+    @utils.skip_missing_dependency('ligo.lw.lsctables')
     def test_read_write_ligolw_property_columns(self):
         table = self.create(100, ['peak', 'snr', 'central_freq'],
                             ['f8', 'f4', 'f4'])
@@ -218,7 +295,10 @@ class TestTable(object):
             for col in ('peak_time', 'peak_time_ns'):
                 assert col in llw.columnnames
             with io_ligolw.patch_ligotimegps():
-                utils.assert_array_equal(llw.get_peak(), table['peak'])
+                utils.assert_array_equal(
+                    asarray([row.peak for row in llw]),
+                    table['peak'],
+                )
 
             # read table and assert gpsproperty was repacked properly
             t2 = self.TABLE.read(f, columns=table.colnames,
@@ -263,8 +343,12 @@ class TestTable(object):
             # check write
             try:
                 table.write(tmp, 'test_read_write_gwf')
-            except ImportError as e:
-                pytest.skip(str(e))
+            except ImportError as exc:  # no frameCPP
+                pytest.skip(str(exc))
+            except TypeError as exc:  # frameCPP broken (2.6.7)
+                if 'ParamList' in str(exc):
+                    pytest.skip("bug in python-ldas-tools-framecpp")
+                raise
 
             # check read gives back same table
             t2 = self.TABLE.read(tmp, 'test_read_write_gwf', columns=columns)
@@ -314,8 +398,10 @@ class TestEventTable(TestTable):
         # check compounding works
         loud = table.filter('snr > 100')
         lowfloud = table.filter('frequency < 100', 'snr > 100')
-        brute = type(table)(rows=[row for row in lowf if row in loud],
-                            names=table.dtype.names)
+        brute = type(table)(
+            rows=[tuple(row) for row in lowf if row in loud],
+            names=table.dtype.names,
+        )
         utils.assert_table_equal(brute, lowfloud)
 
         # check double-ended filter
@@ -330,8 +416,10 @@ class TestEventTable(TestTable):
         # check filtering on segments works
         segs = SegmentList([Segment(100, 200), Segment(400, 500)])
         inseg = table.filter(('time', filters.in_segmentlist, segs))
-        brute = type(table)(rows=[row for row in table if row['time'] in segs],
-                            names=table.colnames)
+        brute = type(table)(
+            rows=[tuple(row) for row in table if row['time'] in segs],
+            names=table.colnames,
+        )
         utils.assert_table_equal(inseg, brute)
 
         # check empty segmentlist is handled well
@@ -399,7 +487,7 @@ class TestEventTable(TestTable):
         t2.binned_event_rates(1, 'a', (10, 100), start=0, end=10)
 
     def test_plot(self, table):
-        with pytest.warns(DeprecationWarning):
+        with pytest.deprecated_call():
             plot = table.plot('time', 'frequency', color='snr')
             plot.close()
 
@@ -419,24 +507,62 @@ class TestEventTable(TestTable):
 
     # -- test I/O -------------------------------
 
+    def test_read_write_hdf5(self, table):
+        # check that our overrides of astropy's H5 reader
+        # didn't break everything
+        with utils.TemporaryFilename(suffix=".h5") as tmp:
+            table.write(tmp, path="/data")
+            t2 = self.TABLE.read(tmp, path="/data")
+            utils.assert_table_equal(t2, table)
+
+            t2 = self.TABLE.read(
+                tmp,
+                path="/data",
+                selection="frequency>500",
+                columns=["time", "snr"],
+            )
+            utils.assert_table_equal(
+                t2,
+                filter_table(table, "frequency>500")[("time", "snr")],
+            )
+
     @pytest.mark.parametrize('fmtname', ('Omega', 'cWB'))
     def test_read_write_ascii(self, table, fmtname):
-        fmt = 'ascii.%s' % fmtname.lower()
+        fmt = 'ascii.{}'.format(fmtname.lower())
         with utils.TemporaryFilename(suffix='.txt') as tmp:
             # check write/read returns the same table
             with open(tmp, 'w') as fobj:
                 table.write(fobj, format=fmt)
-            utils.assert_table_equal(table, self.TABLE.read(tmp, format=fmt),
-                                     almost_equal=True)
+            t2 = self.TABLE.read(tmp, format=fmt)
+            utils.assert_table_equal(table, t2, almost_equal=True)
 
+            # check that we can use selections and column filtering
+            t2 = self.TABLE.read(
+                tmp,
+                format=fmt,
+                selection="frequency>500",
+                columns=["time", "snr"],
+            )
+            utils.assert_table_equal(
+                t2,
+                filter_table(table, "frequency>500")[("time", "snr")],
+                almost_equal=True,
+            )
+
+    @pytest.mark.parametrize('fmtname', ('Omega', 'cWB'))
+    def test_read_write_ascii_error(self, table, fmtname):
         with utils.TemporaryFilename(suffix='.txt') as tmp:
-            with open(tmp, 'w') as f:
+            with open(tmp, 'w'):
                 pass  # write empty file
             # assert reading blank file doesn't work with column name error
             with pytest.raises(InconsistentTableError) as exc:
-                self.TABLE.read(tmp, format=fmt)
-            assert str(exc.value) == ('No column names found in %s header'
-                                      % fmtname)
+                self.TABLE.read(
+                    tmp,
+                    format="ascii.{}".format(fmtname.lower()),
+                )
+            assert str(exc.value) == (
+                'No column names found in {} header'.format(fmtname)
+            )
 
     def test_read_pycbc_live(self):
         table = self.create(
@@ -456,22 +582,25 @@ class TestEventTable(TestTable):
                 group['psd'].attrs['delta_f'] = psd.df.to('Hz').value
 
             # check that we can read
-            t2 = self.TABLE.read(fp)
+            t2 = self.TABLE.read(fp, format="hdf5.pycbc_live")
             utils.assert_table_equal(table, t2)
             # and check metadata was recorded correctly
             assert t2.meta['ifo'] == 'X1'
 
             # check keyword arguments result in same table
-            t2 = self.TABLE.read(fp, format='hdf5.pycbc_live')
-            utils.assert_table_equal(table, t2)
             t2 = self.TABLE.read(fp, format='hdf5.pycbc_live', ifo='X1')
+            utils.assert_table_equal(table, t2)
 
             # assert loudest works
-            t2 = self.TABLE.read(fp, loudest=True)
+            t2 = self.TABLE.read(fp, format="hdf5.pycbc_live", loudest=True)
             utils.assert_table_equal(table.filter('snr > 500'), t2)
 
             # check extended_metadata=True works (default)
-            t2 = self.TABLE.read(fp, extended_metadata=True)
+            t2 = self.TABLE.read(
+                fp,
+                format="hdf5.pycbc_live",
+                extended_metadata=True,
+            )
             utils.assert_table_equal(table, t2)
             utils.assert_array_equal(t2.meta['loudest'], loudest)
             utils.assert_quantity_sub_equal(
@@ -479,11 +608,20 @@ class TestEventTable(TestTable):
                 exclude=['name', 'channel', 'unit', 'epoch'])
 
             # check extended_metadata=False works
-            t2 = self.TABLE.read(fp, extended_metadata=False)
+            t2 = self.TABLE.read(
+                fp,
+                format="hdf5.pycbc_live",
+                extended_metadata=False,
+            )
             assert t2.meta == {'ifo': 'X1'}
 
             # double-check that loudest and extended_metadata=False work
-            t2 = self.TABLE.read(fp, loudest=True, extended_metadata=False)
+            t2 = self.TABLE.read(
+                fp,
+                format="hdf5.pycbc_live",
+                loudest=True,
+                extended_metadata=False,
+            )
             utils.assert_table_equal(table.filter('snr > 500'), t2)
             assert t2.meta == {'ifo': 'X1'}
 
@@ -492,7 +630,7 @@ class TestEventTable(TestTable):
             with h5py.File(fp) as h5f:
                 h5f.create_group('Z1')
             with pytest.raises(ValueError) as exc:
-                self.TABLE.read(fp)
+                self.TABLE.read(fp, format="hdf5.pycbc_live")
             assert str(exc.value).startswith(
                 'PyCBC live HDF5 file contains dataset groups')
 
@@ -501,15 +639,42 @@ class TestEventTable(TestTable):
             utils.assert_table_equal(table, t2)
 
             # assert processed colums works
-            t2 = self.TABLE.read(fp, ifo='X1', columns=['mchirp', 'new_snr'])
+            t2 = self.TABLE.read(
+                fp,
+                format="hdf5.pycbc_live",
+                ifo="X1",
+                columns=["mchirp", "new_snr"],
+            )
             mchirp = (table['mass1'] * table['mass2']) ** (3/5.) / (
                 table['mass1'] + table['mass2']) ** (1/5.)
             utils.assert_array_equal(t2['mchirp'], mchirp)
 
-            # test with selection
-            t2 = self.TABLE.read(fp, format='hdf5.pycbc_live',
-                                 ifo='X1', selection='snr>.5')
-            utils.assert_table_equal(filter_table(table, 'snr>.5'), t2)
+            # test with selection and columns
+            t2 = self.TABLE.read(
+                fp,
+                format='hdf5.pycbc_live',
+                ifo='X1',
+                selection='snr>.5',
+                columns=("a", "b", "mass1"),
+            )
+            utils.assert_table_equal(
+                t2,
+                filter_table(table, 'snr>.5')[("a", "b", "mass1")],
+            )
+
+            # regression test: gwpy/gwpy#1081
+            t2 = self.TABLE.read(
+                fp,
+                format='hdf5.pycbc_live',
+                ifo='X1',
+                selection='snr>.5',
+                columns=("a", "b", "snr"),
+            )
+            utils.assert_table_equal(
+                t2,
+                filter_table(table, 'snr>.5')[("a", "b", "snr")],
+            )
+
         finally:
             if os.path.isdir(os.path.dirname(fp)):
                 shutil.rmtree(os.path.dirname(fp))
@@ -517,7 +682,7 @@ class TestEventTable(TestTable):
     def test_fetch_hacr(self):
         table = self.create(100, names=HACR_COLUMNS)
         try:
-            from pymysql import connect
+            from pymysql import connect  # noqa: F401
         except ImportError:
             mockee = 'gwpy.table.io.hacr.connect'
         else:
@@ -542,3 +707,28 @@ class TestEventTable(TestTable):
             utils.assert_table_equal(
                 filter_table(table, 'freq_central>500')['gps_start', 'snr'],
                 t2)
+
+    def test_fetch_open_data(self):
+        try:
+            table = self.TABLE.fetch_open_data("GWTC-1-confident")
+        except (URLError, SSLError) as exc:
+            pytest.skip(str(exc))
+        assert len(table)
+        assert {"L_peak", "distance", "mass1"}.intersection(table.colnames)
+        # check unit parsing worked
+        assert table["distance"].unit == "Mpc"
+        # check that masking worked (needs table to be sorted)
+        gw170818 = table.loc["GW170818"]
+        assert isinstance(gw170818["snr_pycbc"], MaskedConstant)
+
+    def test_fetch_open_data_kwargs(self):
+        try:
+            table = self.TABLE.fetch_open_data(
+                "GWTC-1-confident",
+                selection="mass1 < 5",
+                columns=["name", "mass1", "mass2", "distance"])
+        except (URLError, SSLError) as exc:
+            pytest.skip(str(exc))
+        assert len(table) == 1
+        assert table[0]["name"] == "GW170817"
+        assert set(table.colnames) == {"name", "mass1", "mass2", "distance"}

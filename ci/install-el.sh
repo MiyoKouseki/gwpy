@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (C) Duncan Macleod (2017)
+# Copyright (C) Duncan Macleod (2017-2019)
 #
 # This file is part of GWpy.
 #
@@ -68,6 +68,7 @@ yum -y -q --nogpgcheck localinstall ${RPM}
 
 # install system-level extras
 yum -y -q install \
+    which \
     python2-pip \
     python2-pytest \
     python2-pytest-cov \
@@ -77,7 +78,6 @@ yum -y -q install \
     python-beautifulsoup4 \
     python-sqlalchemy \
     python2-PyMySQL \
-    python2-gwdatafind \
     m2crypto \
     glue \
     dqsegdb \
@@ -88,6 +88,7 @@ yum -y -q install \
     python2-ldas-tools-framecpp \
     python2-lalframe \
     python2-lalsimulation \
+    python-ligo-lw \
     texlive-dvipng-bin texlive-latex-bin-bin \
     texlive-type1cm texlive-collection-fontsrecommended
 
@@ -95,10 +96,4 @@ yum -y -q install \
 if [ -d /usr/lib64/${PYTHON}/site-packages/LDAStools -a \
      ! -f /usr/lib64/${PYTHON}/site-packages/LDAStools/__init__.py ]; then
     touch /usr/lib64/${PYTHON}/site-packages/LDAStools/__init__.py
-fi
-
-# HACK: remove empty dist-info for python2-root
-_ROOT_DIST_INFO=$(rpm -ql python2-root | grep dist-info)
-if [ ! -s ${_ROOT_DIST_INFO} ]; then
-    rm -f ${_ROOT_DIST_INFO}
 fi

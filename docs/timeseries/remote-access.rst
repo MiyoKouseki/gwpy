@@ -9,14 +9,18 @@ Remote data access
 The LIGO Laboratory archives instrumental data in GWF files hosted on the LIGO Data Grid (see :ref:`gwpy-timeseries-datafind` for more details), however, remote access tools have been developed to simplify loading data.
 GWpy provides two methods for remote data access, one for public data releases, and another for authenticated access to the complete data archive:
 
-==================================  ===========  =========================
-Method                              Restricted?  Description
-==================================  ===========  =========================
-:meth:`TimeSeries.fetch_open_data`  public       Fetch data from LIGO Open
-                                                 Science Center (LOSC)
-:meth:`TimeSeries.get`              LIGO.ORG     Fetch data via local disk
-                                                 or NDS2
-==================================  ===========  =========================
+.. table:: Methods for remote `TimeSeries` data access in GWpy
+   :align: left
+   :name: timeseries-remote-access-methods
+
+   ==================================  ===========  =========================
+   Method                              Restricted?  Description
+   ==================================  ===========  =========================
+   :meth:`TimeSeries.fetch_open_data`  public       Fetch data from LIGO Open
+                                                    Science Center (LOSC)
+   :meth:`TimeSeries.get`              LIGO.ORG     Fetch data via local disk
+                                                    or NDS2
+   ==================================  ===========  =========================
 
 .. _gwpy-timeseries-remote-public:
 
@@ -26,7 +30,7 @@ Open data releases
 
 The `LIGO Open Science Center <https://losc.ligo.org/>`_ hosts a large quantity of open (meaning publicly-available) data from LIGO science runs, including the full strain record for the sixth LIGO science run (S6, 2009-2010) and short extracts of the strain record surrounding published GW observations from Advanced LIGO.
 
-To fetch 32 seconds of strain data around event `GW150914 <http://dx.doi.org/10.1103/PhysRevLett.116.061102>`_, you need to give the prefix of the relevant observatory (``'H1'`` for the LIGO Hanford Observatory, ``'L1'`` for LIGO Livingston), and the start and end times of your query:
+To fetch 32 seconds of strain data around event `GW150914 <https://doi.org/10.1103/PhysRevLett.116.061102>`_, you need to give the prefix of the relevant observatory (``'H1'`` for the LIGO Hanford Observatory, ``'L1'`` for LIGO Livingston), and the start and end times of your query:
 
 .. plot::
    :context: reset
@@ -92,5 +96,5 @@ Authenticated collaborators also have access to the thousands of auxiliary chann
 
 will return one hour of data from the vertical-ground-motion seismometer located near the ITMY vacuum enclosure at LIGO Livingston.
 
-The `TimeSeries.get` method tries direct file access (using :mod:`glue.datafind` for file discovery) first, then falls back to using the Network Data Server (NDS2) for remote access.
+The `TimeSeries.get` method tries direct file access (using |gwdatafind|_ for file discovery) first, then falls back to using the Network Data Server (NDS2) for remote access.
 If you want to manually use NDS2 for remote access you can instead use the `TimeSeries.fetch` method.

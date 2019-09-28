@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2018)
+# Copyright (C) Duncan Macleod (2018-2019)
 #
 # This file is part of GWpy.
 #
@@ -19,6 +19,7 @@
 """Extension of `~matplotlib.axes.Axes` for gwpy
 """
 
+import warnings
 from functools import wraps
 from math import log
 from numbers import Number
@@ -30,7 +31,7 @@ from astropy.time import Time
 from matplotlib import (__version__ as mpl_version, rcParams)
 from matplotlib.artist import allow_rasterization
 from matplotlib.axes import Axes as _Axes
-from matplotlib.cbook import iterable
+from matplotlib.lines import Line2D
 from matplotlib.collections import PolyCollection
 from matplotlib.projections import register_projection
 try:
@@ -40,9 +41,9 @@ except ImportError:  # matplotlib-1.x
 
 from . import (Plot, colorbar as gcbar)
 from .colors import format_norm
-from ..time import (LIGOTimeGPS, to_gps)
-from ..types import (Series, Array2D)
 from .gps import GPS_SCALES
+from .legend import HandlerLine2D
+from ..time import (LIGOTimeGPS, to_gps)
 
 __author__ = 'Duncan Macleod <duncan.macleod@ligo.org>'
 
@@ -52,6 +53,7 @@ DEFAULT_SCATTER_COLOR = 'b' if mpl_version < '2.0' else None
 def log_norm(func):
     """Wrap ``func`` to handle custom gwpy keywords for a LogNorm colouring
     """
+    @wraps(func)
     def decorated_func(*args, **kwargs):
         norm, kwargs = format_norm(kwargs)
         kwargs['norm'] = norm
@@ -64,7 +66,7 @@ def xlim_as_gps(func):
     """
     @wraps(func)
     def wrapped_func(self, left=None, right=None, **kw):
-        if right is None and iterable(left):
+        if right is None and numpy.iterable(left):
             left, right = left
         kw['left'] = left
         kw['right'] = right
@@ -76,6 +78,24 @@ def xlim_as_gps(func):
                 except TypeError:
                     pass
         return func(self, **kw)
+    return wrapped_func
+
+
+def restore_grid(func):
+    """Wrap ``func`` to preserve the Axes current grid settings.
+    """
+    @wraps(func)
+    def wrapped_func(self, *args, **kwargs):
+        grid = (self.xaxis._gridOnMinor, self.xaxis._gridOnMajor,
+                self.yaxis._gridOnMinor, self.yaxis._gridOnMajor)
+        try:
+            return func(self, *args, **kwargs)
+        finally:
+            # reset grid
+            self.xaxis.grid(grid[0], which="minor")
+            self.xaxis.grid(grid[1], which="major")
+            self.yaxis.grid(grid[2], which="minor")
+            self.yaxis.grid(grid[3], which="major")
     return wrapped_func
 
 
@@ -119,12 +139,12 @@ class Axes(_Axes):
     def _fmt_xdata(self, x):
         if self.get_xscale() in GPS_SCALES:
             return str(LIGOTimeGPS(x))
-        raise TypeError  # fall back to default
+        return self.xaxis.get_major_formatter().format_data_short(x)
 
     def _fmt_ydata(self, y):
         if self.get_yscale() in GPS_SCALES:
             return str(LIGOTimeGPS(y))
-        raise TypeError  # fall back to default
+        return self.yaxis.get_major_formatter().format_data_short(y)
 
     set_xlim = xlim_as_gps(_Axes.set_xlim)
 
@@ -181,20 +201,49 @@ class Axes(_Axes):
     )
 
     @log_norm
-    def imshow(self, array, **kwargs):
-        if isinstance(array, Array2D):
-            return self._imshow_array2d(array, **kwargs)
+    def imshow(self, array, *args, **kwargs):
+        """Display an image, i.e. data on a 2D regular raster.
 
-        image = super(Axes, self).imshow(array, **kwargs)
+        If ``array`` is a :class:`~gwpy.types.Array2D` (e.g. a
+        :class:`~gwpy.spectrogram.Spectrogram`), then the defaults are
+        _different_ to those in the upstream
+        :meth:`~matplotlib.axes.Axes.imshow` method. Namely, the defaults are
+
+        - ``origin='lower'`` (coordinates start in lower-left corner)
+        - ``aspect='auto'`` (pixels are not forced to be square)
+        - ``interpolation='none'`` (no image interpolation is used)
+
+        In all other usage, the defaults from the upstream matplotlib method
+        are unchanged.
+
+        Parameters
+        ----------
+        array : array-like or PIL image
+            The image data.
+
+        *args, **kwargs
+            All arguments and keywords are passed to the inherited
+            :meth:`~matplotlib.axes.Axes.imshow` method.
+
+        See also
+        --------
+        matplotlib.axes.Axes.imshow
+            for details of the image rendering
+        """
+        if hasattr(array, "yspan"):  # Array2D
+            return self._imshow_array2d(array, *args, **kwargs)
+
+        image = super(Axes, self).imshow(array, *args, **kwargs)
         self.autoscale(enable=None, axis='both', tight=None)
         return image
-
-    imshow.__doc__ = _Axes.imshow.__doc__
 
     def _imshow_array2d(self, array, origin='lower', interpolation='none',
                         aspect='auto', **kwargs):
         """Render an `~gwpy.types.Array2D` using `Axes.imshow`
         """
+        # NOTE: If you change the defaults for this method, please update
+        #       the docstring for `imshow` above.
+
         # calculate extent
         extent = tuple(array.xspan) + tuple(array.yspan)
         if self.get_xscale() == 'log' and extent[0] == 0.:
@@ -206,21 +255,38 @@ class Axes(_Axes):
         return self.imshow(array.value.T, origin=origin, aspect=aspect,
                            interpolation=interpolation, **kwargs)
 
+    @restore_grid
     @log_norm
     def pcolormesh(self, *args, **kwargs):
-        if len(args) == 1 and isinstance(args[0], Array2D):
+        """Create a pseudocolor plot with a non-regular rectangular grid.
+
+        When using GWpy, this method can be called with a single argument
+        that is an :class:`~gwpy.types.Array2D`, for which the ``X`` and ``Y``
+        coordinate arrays will be determined from the indexing.
+
+        In all other usage, all ``args`` and ``kwargs`` are passed directly
+        to :meth:`~matplotlib.axes.Axes.pcolormesh`.
+
+        Notes
+        -----
+        Unlike the upstream :meth:`matplotlib.axes.Axes.pcolormesh`,
+        this method respects the current grid settings.
+
+        See also
+        --------
+        matplotlib.axes.Axes.pcolormesh
+        """
+        if len(args) == 1 and hasattr(args[0], "yindex"):  # Array2D
             return self._pcolormesh_array2d(*args, **kwargs)
         return super(Axes, self).pcolormesh(*args, **kwargs)
 
-    pcolormesh.__doc__ = _Axes.pcolormesh.__doc__
-
-    def _pcolormesh_array2d(self, array, **kwargs):
+    def _pcolormesh_array2d(self, array, *args, **kwargs):
         """Render an `~gwpy.types.Array2D` using `Axes.pcolormesh`
         """
         x = numpy.concatenate((array.xindex.value, array.xspan[-1:]))
         y = numpy.concatenate((array.yindex.value, array.yspan[-1:]))
         xcoord, ycoord = numpy.meshgrid(x, y, copy=False, sparse=True)
-        return self.pcolormesh(xcoord, ycoord, array.value.T, **kwargs)
+        return self.pcolormesh(xcoord, ycoord, array.value.T, *args, **kwargs)
 
     def hist(self, x, *args, **kwargs):
         x = numpy.asarray(x)
@@ -232,7 +298,7 @@ class Axes(_Axes):
 
         # calculate log-spaced bins on-the-fly
         if (kwargs.pop('logbins', False) and
-                not iterable(kwargs.get('bins', None))):
+                not numpy.iterable(kwargs.get('bins', None))):
             nbins = kwargs.get('bins', None) or rcParams.get('hist.bins', 30)
             # get range
             hrange = kwargs.pop('range', None)
@@ -302,7 +368,7 @@ class Axes(_Axes):
             - `~matplotlib.lines.Line2D` for ``upper``, if given
             - `~matplitlib.collections.PolyCollection` for shading
 
-        See Also
+        See also
         --------
         matplotlib.axes.Axes.plot
             for a full description of acceptable ``*args`` and ``**kwargs``
@@ -430,21 +496,34 @@ class Axes(_Axes):
     # -- overloaded auxiliary methods -----------
 
     def legend(self, *args, **kwargs):
-        alpha = kwargs.pop("alpha", 0.8)
-        linewidth = kwargs.pop("linewidth", 8)
+        # handle deprecated keywords
+        linewidth = kwargs.pop("linewidth", None)
+        if linewidth:
+            warnings.warn(
+                "the linewidth keyword to gwpy.plot.Axes.legend has been "
+                "deprecated and will be removed in a future release; "
+                "please update your code to use a custom legend handler, "
+                "e.g. gwpy.plot.legend.HandlerLine2D.",
+                DeprecationWarning,
+            )
+        alpha = kwargs.pop("alpha", None)
+        if alpha:
+            if mpl_version >= "1.3.0":  # matplotlib >= 1.3.0
+                kwargs.setdefault("framealpha", alpha)
+            warnings.warn(
+                "the alpha keyword to gwpy.plot.Axes.legend has been "
+                "deprecated and will be removed in a future release; "
+                "use framealpha instead.",
+                DeprecationWarning,
+            )
 
-        # make legend
-        legend = super(Axes, self).legend(*args, **kwargs)
+        # build custom handler
+        handler_map = kwargs.setdefault("handler_map", dict())
+        if isinstance(handler_map, dict):
+            handler_map.setdefault(Line2D, HandlerLine2D(linewidth or 6))
 
-        # update alpha and linewidth for legend elements
-        if legend is not None:
-            lframe = legend.get_frame()
-            lframe.set_alpha(alpha)
-            lframe.set_linewidth(rcParams['axes.linewidth'])
-            for line in legend.get_lines():
-                line.set_linewidth(linewidth)
-
-        return legend
+        # create legend
+        return super(Axes, self).legend(*args, **kwargs)
 
     legend.__doc__ = _Axes.legend.__doc__
 
@@ -472,7 +551,7 @@ class Axes(_Axes):
         cbar : `~matplotlib.colorbar.Colorbar`
             the newly added `Colorbar`
 
-        See Also
+        See also
         --------
         Plot.colorbar
         """
@@ -503,14 +582,24 @@ register_projection(Axes)
 class PlotArgsProcessor(_process_plot_var_args):
     """This class controls how ax.plot() works
     """
-    def _grab_next_args(self, *args, **kwargs):
+    def __call__(self, *args, **kwargs):
         """Find `Series` data in `plot()` args and unwrap
         """
-        newargs = type(args)()
-        for arg in args:
-            if isinstance(arg, Series) and arg.ndim == 1:
-                newargs += (arg.xindex.value, arg.value)
+        newargs = []
+        while args:
+            # strip first argument
+            this, args = args[:1], args[1:]
+            # it its a 1-D Series, then parse it as (xindex, value)
+            if hasattr(this[0], "xindex") and this[0].ndim == 1:
+                this = (this[0].xindex.value, this[0].value)
+            # otherwise treat as normal (must be a second argument)
             else:
-                newargs += (arg,)
-        return super(PlotArgsProcessor, self)._grab_next_args(
-            *newargs, **kwargs)
+                this += args[:1]
+                args = args[1:]
+            # allow colour specs
+            if args and isinstance(args[0], str):
+                this += args[0],
+                args = args[1:]
+            newargs.extend(this)
+
+        return super(PlotArgsProcessor, self).__call__(*newargs, **kwargs)

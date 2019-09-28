@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -33,7 +33,7 @@ class TestCliSpectrogram(_TestFFTMixin, _TestTimeDomainProduct,
     @classmethod
     @pytest.fixture
     def dataprod(cls, prod):
-        super(TestCliSpectrogram, cls).dataprod(prod)
+        cls._prod_add_data(prod)
         prod.result = prod.get_spectrogram()
         return prod
 

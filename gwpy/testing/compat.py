@@ -1,5 +1,5 @@
-#!/bin/bash
-# Copyright (C) Duncan Macleod (2018)
+# -*- coding: utf-8 -*-
+# Copyright (C) Duncan Macleod (2018-2019)
 #
 # This file is part of GWpy.
 #
@@ -16,12 +16,10 @@
 # You should have received a copy of the GNU General Public License
 # along with GWpy.  If not, see <http://www.gnu.org/licenses/>.
 
-set -ex
-trap 'set +ex' RETURN
+"""Unit testing compatibility module
+"""
 
-#
-# Install GWpy and all optional dependencies with pip
-#
-
-python -m pip install ${PIP_FLAGS} -r requirements-dev.txt
-python -m pip install ${PIP_FLAGS} .
+try:
+    from unittest import mock  # noqa
+except ImportError:  # python < 3
+    import mock  # noqa

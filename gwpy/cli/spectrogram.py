@@ -1,7 +1,5 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
-# Copyright (C) Joseph Areeda (2015)
+# Copyright (C) Joseph Areeda (2015-2019)
 #
 # This file is part of GWpy.
 #
@@ -17,13 +15,14 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with GWpy.  If not, see <http://www.gnu.org/licenses/>.
-#
 
 """ Spectrogram plots
 """
 
 from numpy import percentile
-from .cliproduct import (FFTMixin, TimeDomainProduct, ImageProduct, unique)
+
+from .cliproduct import (FFTMixin, TimeDomainProduct, ImageProduct)
+from ..utils import unique
 
 __author__ = 'Joseph Areeda <joseph.areeda@ligo.org>'
 
@@ -144,7 +143,7 @@ class Spectrogram(FFTMixin, TimeDomainProduct, ImageProduct):
             specgram = self.get_spectrogram()
 
             # there may be data that can't be processed
-            if specgram:
+            if specgram is not None:  # <-DMM: why is this here?
                 # apply normalisation
                 if args.norm:
                     specgram = specgram.ratio(args.norm)
@@ -175,8 +174,12 @@ class Spectrogram(FFTMixin, TimeDomainProduct, ImageProduct):
             args.ymax = self.result.yspan[1]
 
         specgram = self.result.crop(
-            args.xmin, min(args.xmax, self.result.xspan[1]),
-        ).crop_frequencies(args.ymin, args.ymax)
+            args.xmin, min(args.xmax, self.result.xspan[1])
+        )
+
+        # y axis cannot be cropped if non-linear
+        ax = self.plot.gca()
+        ax.set_ylim(args.ymin, args.ymax)
 
         # auto scale colours
         if args.norm:

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -23,7 +23,9 @@ Peter Shawhan.
 """
 
 import datetime
+import warnings
 from decimal import Decimal
+from numbers import Number
 
 from six import string_types
 
@@ -55,6 +57,12 @@ def tconvert(gpsordate='now'):
     If the input object is a `float` or `LIGOTimeGPS`, it will get
     converted from GPS format into a `datetime.datetime`, otherwise
     the input will be converted into `LIGOTimeGPS`.
+
+    .. warning::
+
+       This method cannot convert exact leap seconds to
+       `datetime.datetime`, that object doesn't support it,
+       so you should consider using `astropy.time.Time` directly.
 
     Examples
     --------
@@ -133,29 +141,33 @@ def to_gps(t, *args, **kwargs):
     >>> to_gps(Time(57754, format='mjd'))
     LIGOTimeGPS(1167264018, 0)
     """
-    # if input is a string of a float, get back to float quickly
-    if isinstance(t, string_types):
-        try:
-            t = float(t)
-        except (TypeError, ValueError):
-            pass
-
     # -- convert input to Time, or something we can pass to LIGOTimeGPS
 
-    if isinstance(t, string_types):  # str -> datetime.datetime
-        t = _str_to_datetime(t)
+    if isinstance(t, string_types):
+        try:  # if str represents a number, leave it for LIGOTimeGPS to handle
+            float(t)
+        except ValueError:  # str -> datetime.datetime
+            t = _str_to_datetime(t)
 
-    if isinstance(t, (tuple, list)):  # tuple -> datetime.datetime
+    # tuple -> datetime.datetime
+    if isinstance(t, (tuple, list)):
         t = datetime.datetime(*t)
 
-    if isinstance(t, datetime.date):  # datetime.datetime -> Time
+    # datetime.datetime -> Time
+    if isinstance(t, datetime.date):
         t = _datetime_to_time(t)
 
-    if isinstance(t, Quantity):  # Quantity -> float
+    # Quantity -> float
+    if isinstance(t, Quantity):
         t = t.to('second').value
 
-    if isinstance(t, Decimal):  # Decimal -> str
+    # Number/Decimal -> str
+    if isinstance(t, Decimal):
         t = str(t)
+    if isinstance(t, Number):
+        # note, on python < 3, str(<float>) isn't very good, so we use repr
+        # for python > 3 we can just use str for both Decimal and Number
+        t = repr(t)
 
     # -- convert to LIGOTimeGPS
 
@@ -180,6 +192,14 @@ def from_gps(gps):
     datetime : `datetime.datetime`
         ISO-format datetime equivalent of input GPS time
 
+    Notes
+    -----
+    .. warning::
+
+       This method cannot convert exact leap seconds to
+       `datetime.datetime`, that object doesn't support it,
+       so you should consider using `astropy.time.Time` directly.
+
     Examples
     --------
     >>> from_gps(1167264018)
@@ -192,7 +212,17 @@ def from_gps(gps):
     except (ValueError, TypeError, RuntimeError):
         gps = LIGOTimeGPS(float(gps))
     sec, nano = gps.gpsSeconds, gps.gpsNanoSeconds
-    date = Time(sec, format='gps', scale='utc').datetime
+    try:
+        date = Time(sec, format='gps', scale='utc').datetime
+    except ValueError as exc:
+        if "within a leap second" in str(exc):
+            exc.args = (
+                "cannot represent leap second using datetime.datetime, "
+                "consider using "
+                "astropy.time.Time({}, format=\"gps\", scale=\"utc\") "
+                "directly".format(gps),
+            )
+        raise
     return date + datetime.timedelta(microseconds=nano*1e-3)
 
 
@@ -230,12 +260,29 @@ DATE_STRINGS = {
 def _str_to_datetime(datestr):
     """Convert `str` to `datetime.datetime`.
     """
-    try:  # try known string
+    # try known string
+    try:
         return DATE_STRINGS[str(datestr).lower()]()
     except KeyError:  # any other string
+        pass
+
+    # use maya
+    try:
+        import maya
+        return maya.when(datestr).datetime()
+    except ImportError:
+        pass
+
+    # use dateutil.parse
+    with warnings.catch_warnings():
+        # don't allow lazy passing of time-zones
+        warnings.simplefilter("error", RuntimeWarning)
         try:
             return dateparser.parse(datestr)
-        except (ValueError, TypeError) as exc:
+        except RuntimeWarning:
+            raise ValueError("Cannot parse date string with timezone "
+                             "without maya, please install maya")
+        except (ValueError, TypeError) as exc:  # improve error reporting
             exc.args = ("Cannot parse date string {0!r}: {1}".format(
                 datestr, exc.args[0]),)
             raise

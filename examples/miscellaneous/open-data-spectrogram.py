@@ -1,4 +1,21 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# Copyright (C) Duncan Macleod (2019)
+#
+# This file is part of GWpy.
+#
+# GWpy is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# GWpy is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with GWpy.  If not, see <http://www.gnu.org/licenses/>.
 
 """Plotting a spectrogram of all open data for 1 day
 
@@ -6,11 +23,11 @@ In order to study interferometer performance, it is common in LIGO to plot
 all of the data for a day, in order to determine trends, and see data-quality
 issues.
 
-This is done for the LIGO-Virgo detector network, with up-to-date plots
-`available from the LIGO Open Science Center
-<https://losc.ligo.org/detector_status/>`__ (LOSC).
+This is done for the LIGO-Virgo detector network, with
+`up-to-date plots <https://www.gw-openscience.org/detector_status/>`__
+available from |GWOSC|.
 
-This example demonstrates how to download data segments from LOSC, then
+This example demonstrates how to download data segments from GWOSC, then
 use those to build a day-timescale spectrogram plot of LIGO-Hanford strain
 data.
 """
@@ -22,10 +39,10 @@ __author__ = 'Duncan Macleod <duncan.macleod@ligo.org>'
 # Getting the segments
 # --------------------
 #
-# First, we need to fetch the Open Data timeline segments from LOSC.
+# First, we need to fetch the Open Data timeline segments from GWOSC.
 # To do that we can call the :meth:`DataQualityFlag.fetch_open_data` method
 # using ``'H1_DATA'`` as the flag (for an explanation of what this means,
-# read up on `The S6 Data Release <https://losc.ligo.org/S6/>`__).
+# read up on `The S6 Data Release <https://www.gw-openscience.org/S6/>`__).
 
 from gwpy.segments import DataQualityFlag
 h1segs = DataQualityFlag.fetch_open_data('H1_DATA',
@@ -75,6 +92,6 @@ ax.set_yscale('log')
 ax.set_ylabel('Frequency [Hz]')
 ax.set_title('LIGO-Hanford strain data')
 ax.colorbar(cmap='viridis', norm='log', clim=(1e-23, 1e-19),
-            label=r'Strain noise [1/\rtHz]')
+            label=r'Strain noise [1/$\sqrt{\mathrm{Hz}}$]')
 plot.add_segments_bar(h1segs)
 plot.show()

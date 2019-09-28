@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -37,7 +37,7 @@ import numpy
 from astropy import units
 
 from .core import (TimeSeriesBase, TimeSeriesBaseDict, TimeSeriesBaseList,
-                   as_series_dict_class, ASTROPY_2_0)
+                   as_series_dict_class)
 from ..types import Array2D
 from ..detector import Channel
 from ..time import Time
@@ -198,10 +198,12 @@ class StateTimeSeries(TimeSeriesBase):
 
     # -- math handling (always boolean) ---------
 
-    if ASTROPY_2_0:
-        def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
-            return super(StateTimeSeries, self).__array_ufunc__(
-                ufunc, method, *inputs, **kwargs).view(bool)
+    def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
+        out = super(StateTimeSeries, self).__array_ufunc__(
+            ufunc, method, *inputs, **kwargs)
+        if out.ndim:
+            return out.view(bool)
+        return out
 
     def __array_wrap__(self, obj, context=None):
         return super(StateTimeSeries, self).__array_wrap__(
@@ -267,7 +269,7 @@ class StateTimeSeries(TimeSeriesBase):
             defines the `known` segments, while the contiguous `True`
             sets defined each of the `active` segments
         """
-        from ..segments import (Segment, SegmentList, DataQualityFlag)
+        from ..segments import DataQualityFlag
 
         # format dtype
         if dtype is None:
@@ -593,7 +595,7 @@ class StateVector(TimeSeriesBase):
             a `dict` of `StateTimeSeries`, one for each given bit
         """
         if bits is None:
-            bits = [b for b in self.bits if b is not None and b is not '']
+            bits = [b for b in self.bits if b not in {None, ''}]
         bindex = []
         for bit in bits:
             try:
@@ -657,6 +659,11 @@ class StateVector(TimeSeriesBase):
             value with which to fill gaps in the source data, only used if
             gap is not given, or `gap='pad'` is given
 
+        Raises
+        ------
+        IndexError
+            if ``source`` is an empty list
+
         Examples
         --------
         To read the S6 state vector, with names for all the bits::
@@ -710,9 +717,9 @@ class StateVector(TimeSeriesBase):
             a list of `~gwpy.segments.flag.DataQualityFlag`
             reprensentations for each bit in this `StateVector`
 
-        See Also
+        See also
         --------
-        :meth:`StateTimeSeries.to_dqflag`
+        StateTimeSeries.to_dqflag
             for details on the segment representation method for
             `StateVector` bits
         """
@@ -814,7 +821,7 @@ class StateVector(TimeSeriesBase):
             :meth:`.find` (for direct GWF file access) or
             :meth:`.fetch` for remote NDS2 access
 
-        See Also
+        See also
         --------
         StateVector.fetch
             for grabbing data from a remote NDS2 server
@@ -852,7 +859,7 @@ class StateVector(TimeSeriesBase):
         plot : `~gwpy.plot.Plot`
             output plot object
 
-        See Also
+        See also
         --------
         matplotlib.pyplot.figure
             for documentation of keyword arguments used to create the

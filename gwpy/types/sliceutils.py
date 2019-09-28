@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2018)
+# Copyright (C) Duncan Macleod (2018-2019)
 #
 # This file is part of GWpy.
 #
@@ -58,7 +58,7 @@ def slice_axis_attributes(old, oldaxis, new, newaxis, slice_):
     slice_ : `slice`, `numpy.ndarray`
         the slice to apply to old (or an index array)
 
-    See Also
+    See also
     --------
     Series.__getitem__
     Array2D.__getitem__

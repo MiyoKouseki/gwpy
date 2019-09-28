@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -28,8 +28,7 @@ from string import Template
 
 from six.moves.configparser import (ConfigParser, NoOptionError)
 
-from matplotlib import use
-use('agg')
+import matplotlib
 
 from sphinx.util import logging
 
@@ -39,8 +38,9 @@ from numpydoc import docscrape_sphinx
 
 import gwpy
 from gwpy import _version as gwpy_version
-from gwpy.plot.rc import DEFAULT_PARAMS as GWPY_PLOT_PARAMS
 from gwpy.utils.sphinx import zenodo
+
+matplotlib.use('agg')
 
 GWPY_VERSION = gwpy_version.get_versions()
 
@@ -103,7 +103,10 @@ copyright = u'2013, Duncan Macleod'
 # built documents.
 #
 # The short X.Y version.
-version = GWPY_VERSION['version'].split('+')[0]
+if '+' in GWPY_VERSION["version"]:
+    version = "dev"
+else:
+    version = GWPY_VERSION["version"]
 # The full version, including alpha/beta/rc tags.
 release = GWPY_VERSION['version']
 
@@ -161,7 +164,7 @@ autosummary_generate = True
 
 # -- plot_directive -----------------------------
 
-plot_rcparams = GWPY_PLOT_PARAMS
+plot_rcparams = dict(matplotlib.rcParams)
 plot_rcparams.update({
     'backend': 'agg',
 })
@@ -182,7 +185,7 @@ numpydoc_use_blockquotes = True
 numpydoc_use_plots = True
 
 # update the plot detection to include .show() calls
-parts = re.split('[\(\)|]', docscrape_sphinx.IMPORT_MATPLOTLIB_RE)[1:-1]
+parts = re.split(r'[\(\)|]', docscrape_sphinx.IMPORT_MATPLOTLIB_RE)[1:-1]
 parts.extend(('fig.show()', 'plot.show()'))
 docscrape_sphinx.IMPORT_MATPLOTLIB_RE = r'\b({})\b'.format('|'.join(parts))
 
@@ -303,15 +306,21 @@ htmlhelp_basename = 'GWpydoc'
 
 # Intersphinx
 intersphinx_mapping = {
-    'python': ('https://docs.python.org/', None),
-    'numpy': ('https://docs.scipy.org/doc/numpy/', None),
-    'scipy': ('https://docs.scipy.org/doc/scipy/reference/', None),
-    'matplotlib': ('http://matplotlib.org/', None),
     'astropy': ('http://docs.astropy.org/en/stable/', None),
-    'pycbc': ('http://pycbc.org/pycbc/latest/html/', None),
-    'root_numpy': ('http://scikit-hep.org/root_numpy/', None),
-    'h5py': ('http://docs.h5py.org/en/latest/', None),
     'dateutil': ('https://dateutil.readthedocs.io/en/stable/', None),
+    'dqsegdb2': ('https://dqsegdb2.readthedocs.io/en/stable/', None),
+    'glue': ('https://docs.ligo.org/lscsoft/glue/', None),
+    'gwdatafind': ('https://gwdatafind.readthedocs.io/en/stable/', None),
+    'gwosc': ('https://gwosc.readthedocs.io/en/stable/', None),
+    'h5py': ('http://docs.h5py.org/en/latest/', None),
+    'ligo-segments': ('https://docs.ligo.org/lscsoft/ligo-segments/', None),
+    'ligolw': ('https://docs.ligo.org/kipp.cannon/python-ligo-lw/', None),
+    'matplotlib': ('http://matplotlib.org/', None),
+    'numpy': ('https://docs.scipy.org/doc/numpy/', None),
+    'pycbc': ('http://pycbc.org/pycbc/latest/html/', None),
+    'python': ('https://docs.python.org/3/', None),
+    'root_numpy': ('http://scikit-hep.org/root_numpy/', None),
+    'scipy': ('https://docs.scipy.org/doc/scipy/reference/', None),
 }
 
 
@@ -474,6 +483,8 @@ def build_examples(_):
         logger.debug('[examples] created {0}'.format(outdir))
 
     for exdir in next(os.walk(srcdir))[1]:
+        if exdir in {"__pycache__",}:  # ignore
+            continue
         subdir = os.path.join(outdir, exdir)
         if not os.path.isdir(subdir):
             os.makedirs(subdir)
@@ -506,17 +517,19 @@ def write_citing_rst(_):
 
 # -- add css and js files -----------------------------------------------------
 
-CSS_DIR = os.path.join(html_static_path[0], 'css')
-JS_DIR = os.path.join(html_static_path[0], 'js')
 
 def setup_static_content(app):
+    staticdir = os.path.join(SPHINX_DIR, html_static_path[0])
+
     # add stylesheets
-    for cssf in glob.glob(os.path.join(CSS_DIR, '*.css')):
-        app.add_stylesheet(cssf.split(os.path.sep, 1)[1])
+    cssdir = os.path.join(staticdir, 'css')
+    for cssf in glob.glob(os.path.join(cssdir, '*.css')):
+        app.add_stylesheet(os.path.sep.join(cssf.rsplit(os.path.sep, 2)[-2:]))
 
     # add custom javascript
-    for jsf in glob.glob(os.path.join(JS_DIR, '*.js')):
-        app.add_javascript(jsf.split(os.path.sep, 1)[1])
+    jsdir = os.path.join(staticdir, 'js')
+    for jsf in glob.glob(os.path.join(jsdir, '*.js')):
+        app.add_javascript(os.path.sep.join(jsf.rsplit(os.path.sep, 2)[-2:]))
 
 
 # -- setup --------------------------------------------------------------------

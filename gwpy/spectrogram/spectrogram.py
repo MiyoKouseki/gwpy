@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -26,7 +26,6 @@ from six import string_types
 import numpy
 
 import scipy
-from scipy import signal
 
 from astropy import units
 from astropy.io import registry as io_registry
@@ -336,7 +335,7 @@ class Spectrogram(Array2D):
         plot : `~gwpy.plot.Plot`
             the `Plot` containing the data
 
-        See Also
+        See also
         --------
         matplotlib.pyplot.figure
             for documentation of keyword arguments used to create the
@@ -344,7 +343,8 @@ class Spectrogram(Array2D):
         matplotlib.figure.Figure.add_subplot
             for documentation of keyword arguments used to create the
             axes
-        gwpy.plot.Axes.imshow or gwpy.plot.Axes.pcolormesh
+        gwpy.plot.Axes.imshow
+        gwpy.plot.Axes.pcolormesh
             for documentation of keyword arguments used in rendering the
             `Spectrogram` data
         """
@@ -420,10 +420,10 @@ class Spectrogram(Array2D):
             name = '{}: {} percentile'.format(self.name, _ordinal(percentile))
         else:
             name = None
-        return FrequencySeries(out, epoch=self.epoch, channel=self.channel,
-                               name=name, f0=self.f0, df=self.df,
-                               frequencies=(hasattr(self, '_frequencies') and
-                                            self.frequencies or None))
+        return FrequencySeries(
+            out, epoch=self.epoch, channel=self.channel, name=name,
+            f0=self.f0, df=self.df, unit=self.unit, frequencies=(
+                hasattr(self, '_frequencies') and self.frequencies or None))
 
     def zpk(self, zeros, poles, gain, analog=True):
         """Filter this `Spectrogram` by applying a zero-pole-gain filter
@@ -448,7 +448,7 @@ class Spectrogram(Array2D):
         specgram : `Spectrogram`
             the frequency-domain filtered version of the input data
 
-        See Also
+        See also
         --------
         Spectrogram.filter
             for details on how a digital ZPK-format filter is applied
@@ -528,9 +528,9 @@ class Spectrogram(Array2D):
         specvar : `SpectralVariance`
             2D-array of spectral frequency-amplitude counts
 
-        See Also
+        See also
         --------
-        :func:`numpy.histogram`
+        numpy.histogram
             for details on specifying bins and weights
         """
         from ..frequencyseries import SpectralVariance

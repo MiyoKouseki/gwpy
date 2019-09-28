@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -19,7 +19,6 @@
 """Unit test for gwpy.types classes
 """
 
-import os
 import pickle
 import warnings
 
@@ -31,8 +30,8 @@ from astropy import units
 from astropy.time import Time
 
 from ...detector import Channel
-from ...tests import utils
-from ...tests.mocks import mock
+from ...testing import utils
+from ...testing.compat import mock
 from ...time import LIGOTimeGPS
 from .. import Array
 
@@ -215,8 +214,11 @@ class TestArray(object):
         assert arraysq.epoch == array.epoch
         assert arraysq.channel == array.channel
 
-    def test_copy(self, array):
-        utils.assert_quantity_sub_equal(array, array.copy())
+    def test_copy(self):
+        array = self.create(channel='X1:TEST')
+        copy = array.copy()
+        utils.assert_quantity_sub_equal(array, copy)
+        assert copy.channel is not array.channel
 
     def test_repr(self, array):
         # just test that it runs

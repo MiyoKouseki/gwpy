@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -33,7 +33,7 @@ __author__ = "Duncan Macleod <duncan.macleod@ligo.org>"
 def fdfilter(data, *filt, **kwargs):
     """Filter a frequency-domain data object
 
-    See Also
+    See also
     --------
     gwpy.frequencyseries.FrequencySeries.filter
     gwpy.spectrogram.Spectrogram.filter

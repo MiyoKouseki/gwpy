@@ -1,7 +1,5 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
-# Copyright (C) Joseph Areeda (2015)
+# Copyright (C) Joseph Areeda (2015-2019)
 #
 # This file is part of GWpy.
 #
@@ -17,7 +15,6 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with GWpy.  If not, see <http://www.gnu.org/licenses/>.
-#
 
 """The timeseries CLI product
 """
@@ -25,6 +22,7 @@
 from .cliproduct import TimeDomainProduct
 from ..plot import Plot
 from ..plot.tex import label_to_latex
+import warnings
 
 __author__ = 'Joseph Areeda <joseph.areeda@ligo.org>'
 
@@ -70,8 +68,25 @@ class TimeSeries(TimeDomainProduct):
         plot = Plot(figsize=self.figsize, dpi=self.dpi)
         ax = plot.gca(xscale='auto-gps')
 
-        for series in self.timeseries:
-            label = series.channel.name
+        # handle user specified plot labels
+        if self.args.legend:
+            nlegargs = len(self.args.legend[0])
+        else:
+            nlegargs = 0
+        if nlegargs > 0 and nlegargs != self.n_datasets:
+            warnings.warn('The number of legends specified must match '
+                          'the number of time series'
+                          ' (channels * start times).  '
+                          'There are {:d} series and {:d} legends'.format(
+                            len(self.timeseries), len(self.args.legend)))
+            nlegargs = 0    # don't use  them
+
+        for i in range(0, self.n_datasets):
+            series = self.timeseries[i]
+            if nlegargs:
+                label = self.args.legend[0][i]
+            else:
+                label = series.channel.name
             if self.usetex:
                 label = label_to_latex(label)
             ax.plot(series, label=label)

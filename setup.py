@@ -1,6 +1,5 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2016)
+# Copyright (C) Duncan Macleod (2016-2019)
 #
 # This file is part of GWpy.
 #
@@ -50,19 +49,22 @@ setup_requires = get_setup_requires()
 
 # runtime dependencies
 install_requires = [
-    'six >= 1.5',
-    'python-dateutil',
-    'enum34 ; python_version < \'3\'',
-    'numpy >= 1.7.1',
-    'scipy >= 0.12.1',
-    'matplotlib >= 1.2.0, != 2.1.0, != 2.1.1',
-    'astropy >= 1.1.1, < 3.0.0 ; python_version < \'3\'',
-    'astropy >= 1.1.1 ; python_version >= \'3\'',
+    'astropy >= 1.1.1, < 3.0.0 ; python_version < \'3.5\'',
+    'astropy >= 1.1.1 ; python_version >= \'3.5\'',
+    'dqsegdb2',
+    'enum34 ; python_version < \'3.4\'',
+    'gwdatafind',
+    'gwosc >= 0.4.0',
     'h5py >= 1.3',
     'ligo-segments >= 1.0.0',
-    'tqdm >= 4.10.0',
     'ligotimegps >= 1.2.1',
-    'gwosc >= 0.3.1',
+    'matplotlib >= 1.2.0, != 2.1.0, != 2.1.1',
+    'numpy >= 1.7.1',
+    'pathlib ; python_version < \'3.4\'',
+    'python-dateutil',
+    'scipy >= 0.12.1',
+    'six >= 1.5',
+    'tqdm >= 4.10.0',
 ]
 
 # if setuptools is too old and we are building an EL7 or Debian 8
@@ -75,7 +77,7 @@ if not PEP_508 and (
 
 # test dependencies
 tests_require = [
-    'pytest>=3.1,<4.0a0',
+    'pytest>=3.3.0,<5.0.0',
     'freezegun>=0.2.3',
     'sqlparse>=0.2.0',
     'beautifulsoup4',
@@ -102,7 +104,6 @@ setup(
     packages=find_packages(),
     scripts=get_scripts(),
     include_package_data=True,
-    test_suite='gwpy.tests',
 
     # dependencies
     cmdclass=CMDCLASS,
@@ -115,7 +116,6 @@ setup(
         'Development Status :: 4 - Beta',
         'Programming Language :: Python',
         'Programming Language :: Python :: 2.7',
-        'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',

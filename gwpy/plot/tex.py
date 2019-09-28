@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -48,7 +48,7 @@ def has_tex():
     for exe in ('latex', 'pdflatex', 'dvipng'):
         try:
             which(exe)
-        except ValueError:
+        except (ValueError, KeyError):
             return False
     return True
 
@@ -57,14 +57,14 @@ HAS_TEX = has_tex()
 
 # -- tex formatting -----------------------------------------------------------
 
-LATEX_CONTROL_CHARS = ["%", "\\", "_", "~", "&"]
+LATEX_CONTROL_CHARS = ["%", "\\", "_", "~", "&", "#"]
 re_latex_control = re.compile(r'(?<!\\)[%s](?!.*{)'
                               % ''.join(LATEX_CONTROL_CHARS))
 
 
 def float_to_latex(x, format="%.2g"):  # pylint: disable=redefined-builtin
     # pylint: disable=anomalous-backslash-in-string
-    """Convert a floating point number to a latex representation.
+    r"""Convert a floating point number to a latex representation.
 
     In particular, scientific notation is handled gracefully: e -> 10^
 
@@ -111,7 +111,7 @@ def float_to_latex(x, format="%.2g"):  # pylint: disable=redefined-builtin
 
 def label_to_latex(text):
     # pylint: disable=anomalous-backslash-in-string
-    """Convert text into a latex-passable representation.
+    r"""Convert text into a latex-passable representation.
 
     This method just escapes the following reserved LaTeX characters:
     % \ _ ~ &, whilst trying to avoid doubly-escaping already escaped

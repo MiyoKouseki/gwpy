@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -30,7 +30,7 @@ import numpy
 import pytest
 
 from ...segments import (Segment, SegmentList)
-from ...tests.utils import (skip_missing_dependency, TemporaryFilename)
+from ...testing.utils import skip_missing_dependency
 from .. import cache as io_cache
 
 __author__ = 'Duncan Macleod <duncan.macleod@ligo.org>'
@@ -40,17 +40,15 @@ SEGMENTS = SegmentList(map(Segment, [
     (1, 2),
     (4, 5),
 ]))
+CACHE = [os.path.join('tmp', 'A-B-%d-%d.tmp' % (seg[0], seg[1] - seg[0])) for
+         seg in SEGMENTS]
 
 
 # -- fixtures -----------------------------------------------------------------
 
 @pytest.fixture
 def cache():
-    cache = []
-    for seg in SEGMENTS:
-        d = seg[1] - seg[0]
-        cache.append(os.path.join('tmp', 'A-B-%d-%d.tmp' % (seg[0], d)))
-    return cache
+    return list(CACHE)
 
 
 @pytest.fixture
@@ -58,38 +56,61 @@ def segments():
     return deepcopy(SEGMENTS)
 
 
-@pytest.fixture
-def tmpfile():
-    with TemporaryFilename() as tmp:
-        yield tmp
-
-
 # -- tests --------------------------------------------------------------------
 
-@skip_missing_dependency('lal.utils')
-def test_read_write_cache(cache, tmpfile):
-    from lal.utils import CacheEntry
-    lcache = list(map(CacheEntry.from_T050017, cache))
+@pytest.mark.parametrize("format, entry1", [
+    (None, CACHE[0]),
+    pytest.param(
+        "lal",
+        "A B {0[0]} {1} {2}".format(SEGMENTS[0], abs(SEGMENTS[0]), CACHE[0]),
+        id="lal"),
+    pytest.param(
+        "ffl",
+        "{0} {1[0]} {2} 0 0".format(CACHE[0], SEGMENTS[0], abs(SEGMENTS[0])),
+        id="ffl"),
+])
+def test_read_write_cache(cache, tmpfile, format, entry1):
+    # write cache using filename
+    io_cache.write_cache(cache, tmpfile, format=format)
 
-    with open(tmpfile, 'w') as f:
-        io_cache.write_cache(lcache, f)
+    # check that first line is proper LAL format
+    with open(tmpfile, "r") as tmp:
+        assert tmp.readline().strip() == entry1
 
-    # read from fileobj
-    with open(tmpfile) as f:
-        c2 = io_cache.read_cache(tmpfile)
-    assert cache == c2
+    # now read it back ans check we get the same answer
+    assert io_cache.read_cache(tmpfile) == cache
 
-    # write with file name
-    io_cache.write_cache(lcache, tmpfile)
-
-    # read from file name
-    c3 = io_cache.read_cache(tmpfile)
-    assert cache == c3
+    # check read/write with a file object
+    with open(tmpfile, "w") as tmp:
+        io_cache.write_cache(cache, tmp, format=format)
+    with open(tmpfile, "r") as tmp:
+        assert io_cache.read_cache(tmp) == cache
 
     # check sieving and sorting works
-    c4 = io_cache.read_cache(tmpfile, sort=lambda e: -e.segment[0],
-                             segment=Segment(0, 2))
-    assert c4 == cache[1::-1]
+    assert io_cache.read_cache(
+        tmpfile,
+        sort=lambda e: -io_cache.filename_metadata(e)[2][0],
+        segment=Segment(0, 2),
+    ) == cache[1::-1]
+
+
+@skip_missing_dependency('lal.utils')
+def test_write_cache_cacheentry(cache, tmpfile):
+    from lal.utils import CacheEntry
+    lcache = list(map(CacheEntry.from_T050017, cache))
+    with open(tmpfile, 'w') as f:
+        io_cache.write_cache(lcache, f, format=None)
+
+    # check first line looks like a LAL-format cache entry
+    with open(tmpfile, "r") as tmp:
+        assert tmp.readline().strip() == "A B {0[0]} {1} {2}".format(
+            SEGMENTS[0],
+            abs(SEGMENTS[0]),
+            CACHE[0],
+        )
+
+    # read from file name
+    assert io_cache.read_cache(tmpfile) == cache
 
 
 @pytest.mark.parametrize('input_, result', [
@@ -148,66 +169,6 @@ def test_is_cache_entry():
         assert io_cache.is_cache_entry(e)
 
 
-def test_file_list(cache):
-
-    # test file -> [file.name]
-    with tempfile.NamedTemporaryFile() as f:
-        assert io_cache.file_list(f) == [f.name]
-
-    try:
-        from lal.utils import CacheEntry
-    except ImportError:
-        pass
-    else:
-        # test CacheEntry -> [CacheEntry.path]
-        lcache = list(map(CacheEntry.from_T050017, cache))
-        assert io_cache.file_list(lcache[0]) == [cache[0]]
-
-        # test cache object -> pfnlist
-        assert io_cache.file_list(lcache) == cache
-
-        # test cache file -> pfnlist()
-        with tempfile.NamedTemporaryFile(suffix='.lcf', mode='w') as f:
-            io_cache.write_cache(lcache, f)
-            f.seek(0)
-            assert io_cache.file_list(f.name) == cache
-
-    # test comma-separated list -> list
-    assert io_cache.file_list('A,B,C,D') == ['A', 'B', 'C', 'D']
-
-    # test list -> list
-    assert io_cache.file_list(['A', 'B', 'C', 'D']) == ['A', 'B', 'C', 'D']
-
-    # otherwise error
-    with pytest.raises(ValueError):
-        io_cache.file_list(1)
-
-
-def test_file_name(cache):
-
-    # check file_name(<str>)
-    assert io_cache.file_name('test.txt') == 'test.txt'
-
-    # check file_name(<file>)
-    with tempfile.NamedTemporaryFile() as f:
-        assert io_cache.file_name(f) == f.name
-
-    # check file_name(<CacheEntry>)
-    try:
-        from lal.utils import CacheEntry
-    except ImportError:
-        pass
-    else:
-        assert io_cache.file_name(
-            CacheEntry.from_T050017(cache[0])) == cache[0]
-
-    # check that anything else fails
-    with pytest.raises(ValueError):
-        io_cache.file_name(1)
-    with pytest.raises(ValueError):
-        io_cache.file_name(['test.txt'])
-
-
 def test_cache_segments(cache, segments):
     """Test :func:`gwpy.io.cache.cache_segments`
     """
@@ -224,6 +185,21 @@ def test_cache_segments(cache, segments):
     # check multiple caches produces the same result
     sl = io_cache.cache_segments(cache[:2], cache[2:])
     assert sl == segments
+
+
+@pytest.mark.parametrize("path, metadata", [
+    ("A-B-0-1.txt", ('A', 'B', Segment(0, 1))),
+    ("/path/to/A-B-0.456-1.345.txt.gz", ("A", "B", Segment(0.456, 1.801))),
+])
+def test_filename_metadata(path, metadata):
+    """Test :func:`gwpy.io.cache.filename_metadata`
+    """
+    assert io_cache.filename_metadata(path) == metadata
+
+
+def test_filename_metadata_error():
+    with pytest.raises(ValueError):
+        io_cache.filename_metadata("A-B-0-4xml.gz")
 
 
 def test_file_segment():
@@ -277,3 +253,13 @@ def test_sieve(cache, segments):
 
     segments.coalesce()
     assert io_cache.sieve(cache, segments[0]) == cache[:2]
+
+
+def test_file_list():
+    with pytest.deprecated_call():
+        assert io_cache.file_list("1,2,3") == ["1", "2", "3"]
+
+
+def test_file_name():
+    with pytest.deprecated_call():
+        assert io_cache.file_name("123") == "123"

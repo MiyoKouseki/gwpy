@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2017)
+# Copyright (C) Duncan Macleod (2017-2019)
 #
 # This file is part of GWpy.
 #
@@ -22,16 +22,12 @@ This module provides the `read_multi` method, which enables spreading
 reading multiple files across multiple cores, returning a flattened result.
 """
 
-import sys
 from xml.sax import SAXException
 
-from six import string_types
-
 from astropy.io.registry import (read as io_read)
-from astropy.utils.data import get_readable_fileobj
 
-from .cache import (FILE_LIKE, file_list)
 from .registry import get_read_format
+from .utils import file_list
 from ..utils import mp as mp_utils
 
 
@@ -68,10 +64,19 @@ def read_multi(flatten, cls, source, *args, **kwargs):
         files = file_list(source)
     except ValueError:  # otherwise treat as single file
         files = [source]
+        path = None  # to pass to get_read_format()
+    else:
+        path = files[0] if files else None
+
+    # raise IndexError early when reading from empty cache
+    if not files:
+        raise IndexError(
+            "cannot read {} from empty source list".format(cls.__name__),
+        )
 
     # determine input format (so we don't have to do it multiple times)
     if kwargs.get('format', None) is None:
-        kwargs['format'] = get_read_format(cls, files[0], args, kwargs)
+        kwargs['format'] = get_read_format(cls, path, (source,) + args, kwargs)
 
     # calculate maximum number of processes
     nproc = min(kwargs.pop('nproc', 1), len(files))

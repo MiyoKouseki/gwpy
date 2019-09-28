@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2018)
+# Copyright (C) Duncan Macleod (2018-2019)
 #
 # This file is part of GWpy.
 #
@@ -19,7 +19,6 @@
 """Unit tests for gwpy.types.series
 """
 
-import os
 import warnings
 
 import numpy
@@ -29,7 +28,7 @@ import pytest
 from astropy import units
 
 from ...segments import Segment
-from ...tests import utils
+from ...testing import utils
 from .. import (Series, Array2D)
 from .test_array import TestArray as _TestArray
 
@@ -111,6 +110,12 @@ class TestSeries(_TestArray):
             series.dx
         assert series.x0 == units.Quantity(1, 'Mpc')
         assert series.xspan == (x[0], x[-1] + x[-1] - x[-2])
+
+    def test_xindex_dtype(self):
+        x0 = numpy.longdouble(100)
+        dx = numpy.float32(1e-4)
+        series = self.create(x0=x0, dx=dx)
+        assert series.xindex.dtype is x0.dtype
 
     def test_xunit(self, unit=None):
         if unit is None:

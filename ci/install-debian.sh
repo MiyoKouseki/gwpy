@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (C) Duncan Macleod (2017)
+# Copyright (C) Duncan Macleod (2017-2019)
 #
 # This file is part of GWpy.
 #
@@ -36,7 +36,7 @@ pushd build
 apt-get -yqq update
 
 # install basic build dependencies
-apt-get -yqq install dpkg-dev devscripts
+apt-get -yqq install dpkg-dev devscripts lintian
 
 # unwrap tarball into build path
 tar -xf ../*.tar.* --strip-components=1
@@ -48,6 +48,9 @@ mk-build-deps --tool "apt-get -y" --install --remove
 dpkg-buildpackage -us -uc -b
 
 popd
+
+# lint the result
+lintian gwpy_*.changes
 
 # -- install ------------------------------------
 
@@ -62,9 +65,7 @@ dpkg --install ${GWPY_DEB} || { \
 }
 
 # install extras
-# NOTE: git is needed for coveralls
 apt-get -yqq install \
-    git \
     ${PY_PREFIX}-pip \
     libkrb5-dev krb5-user \
     dvipng texlive-latex-base texlive-latex-extra \
@@ -80,7 +81,9 @@ apt-get -yqq install \
     ${PY_PREFIX}-lal \
     ${PY_PREFIX}-lalframe \
     ${PY_PREFIX}-lalsimulation \
-    ${PY_PREFIX}-nds2-client
+    ${PY_PREFIX}-ldas-tools-framecpp \
+    ${PY_PREFIX}-nds2-client \
+    ${PY_PREFIX}-ligo-lw
 
 # install ROOT for python2 only
 if [ "${PY_PREFIX}" == "python" ]; then

@@ -66,7 +66,7 @@ To read data from a GWF file, pass the input file path (or paths) and the name o
 
 .. note::
 
-   The ``HLV-HW100916-968654552-1.gwf`` file is included with the GWpy source under `/gwpy/tests/data/ <https://github.com/gwpy/gwpy/tree/master/gwpy/tests/data>`_.
+   The ``HLV-HW100916-968654552-1.gwf`` file is included with the GWpy source under `/gwpy/testing/data/ <https://github.com/gwpy/gwpy/tree/master/gwpy/testing/data>`_.
 
 Reading a `StateVector` uses the same syntax::
 
@@ -88,15 +88,19 @@ The ``start`` and ``end`` keyword arguments can be used to downselect data to a 
 
 Additionally, the following keyword arguments can be used:
 
-============  =======  =======  ==========================================
-Keyword       Type     Default  Usage
-============  =======  =======  ==========================================
-``scaled``    `bool`   `True`   Apply ADC calibration when reading
-``type``      `str`    `None`   `dict` of channel types
-                                (``'ADC'``, ``'Proc'``, or ``'Sim'``) for
-                                each channel to be read. This option
-                                optimises the reading operation.
-============  =======  =======  ==========================================
+.. table:: Keyword arguments for `TimeSeries.read`
+   :align: left
+   :name: timeseries-read-kwargs
+
+   ============  =======  =======  ==========================================
+   Keyword       Type     Default  Usage
+   ============  =======  =======  ==========================================
+   ``scaled``    `bool`   `True`   Apply ADC calibration when reading
+   ``type``      `str`    `None`   `dict` of channel types
+                                   (``'ADC'``, ``'Proc'``, or ``'Sim'``) for
+                                   each channel to be read. This option
+                                   optimises the reading operation.
+   ============  =======  =======  ==========================================
 
 Reading multiple channels
 -------------------------
@@ -183,9 +187,8 @@ To replace an existing dataset in an existing file, while preserving other data,
 HDF5 (GWOSC)
 ============
 
-The `Gravitational Wave Open Science Center (GWOSC)
-<https://www.gw-openscience.org>` write data in HDF5 using a custom schema
-that is incompatible with the `format='hdf5'`.
+|GWOSC|_ write data in HDF5 using a custom schema that is incompatible
+with `format='hdf5'`.
 
 -------
 Reading

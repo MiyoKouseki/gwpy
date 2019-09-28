@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -27,6 +27,7 @@ from astropy.io import registry as io_registry
 from ligo.segments import (segment, segmentlist, segmentlistdict)
 
 from ..io.mp import read_multi as io_read_multi
+from ..utils.decorators import return_as
 
 __author__ = "Duncan Macleod <duncan.macleod@ligo.org>"
 __credits__ = "Kipp Cannon <kipp.cannon@ligo.org>"
@@ -124,18 +125,41 @@ class SegmentList(segmentlist):
      Segment(30, infinity)]
     """
 
+    # -- representations ------------------------
+
     def __repr__(self):
         return "<SegmentList([%s])>" % "\n              ".join(map(repr, self))
 
+    def __str__(self):
+        return "[%s]" % "\n ".join(map(str, self))
+
+    # -- type casting ---------------------------
+
+    extent = return_as(Segment)(segmentlist.extent)
+
     def coalesce(self):
-        self = super(SegmentList, self).coalesce()
+        super(SegmentList, self).coalesce()
         for i, seg in enumerate(self):
             self[i] = Segment(seg[0], seg[1])
         return self
     coalesce.__doc__ = segmentlist.coalesce.__doc__
 
-    def __str__(self):
-        return "[%s]" % "\n ".join(map(str, self))
+    def to_table(self):
+        """Convert this `SegmentList` to a `~astropy.table.Table`
+
+        The resulting `Table` has four columns: `index`, `start`, `end`, and
+        `duration`, corresponding to the zero-counted list index, GPS start
+        and end times, and total duration in seconds, respectively.
+
+        This method exists mainly to provide a way to write `SegmentList`
+        objects in comma-separated value (CSV) format, via the
+        :meth:`~astropy.table.Table.write` method.
+        """
+        from astropy.table import Table
+        return Table(
+            rows=[(i, s[0], s[1], abs(s)) for i, s in enumerate(self)],
+            names=('index', 'start', 'end', 'duration'),
+        )
 
     # -- i/o ------------------------------------
 
@@ -166,6 +190,11 @@ class SegmentList(segmentlist):
         -------
         segmentlist : `SegmentList`
             `SegmentList` active and known segments read from file.
+
+        Raises
+        ------
+        IndexError
+            if ``source`` is an empty list
 
         Notes
         -----"""
@@ -236,6 +265,7 @@ class SegmentListDict(segmentlistdict):
     {'H2': [Segment(6.0, 15)], 'H1': [Segment(0.0, 9.0)]}
     """
     pass
+
 
 # clean up the namespace
 del segment, segmentlist, segmentlistdict

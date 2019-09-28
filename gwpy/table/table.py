@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2017)
+# Copyright (C) Duncan Macleod (2017-2019)
 #
 # This file is part of GWpy.
 #
@@ -28,9 +28,10 @@ from six import string_types
 
 import numpy
 
+from gwosc.api import DEFAULT_URL as DEFAULT_GWOSC_URL
+
 from astropy.table import (Table, Column, vstack)
-from astropy.io.registry import write as io_write
-from astropy.units import Quantity
+from astropy.io import registry
 
 from ..io.mp import read_multi as io_read_multi
 from ..time import gps_types
@@ -41,6 +42,37 @@ __all__ = ['EventColumn', 'EventTable']
 
 
 # -- utilities ----------------------------------------------------------------
+
+def inherit_io_registrations(cls):
+    parent = cls.__mro__[1]
+    for row in registry.get_formats(data_class=parent):
+        name = row["Format"]
+        # read
+        if row["Read"].lower() == "yes":
+            registry.register_reader(
+                name,
+                cls,
+                registry.get_reader(name, parent),
+                force=False,
+            )
+        # write
+        if row["Write"].lower() == "yes":
+            registry.register_writer(
+                name,
+                cls,
+                registry.get_writer(name, parent),
+                force=False,
+            )
+        # identify
+        if row["Auto-identify"].lower() == "yes":
+            registry.register_identifier(
+                name,
+                cls,
+                registry._identifiers[(name, parent)],
+                force=False,
+            )
+    return cls
+
 
 def _rates_preprocess(func):
     @wraps(func)
@@ -77,6 +109,11 @@ def _rates_preprocess(func):
 class EventColumn(Column):
     """Custom `Column` that allows filtering with segments
     """
+    def __new__(cls, *args, **kwargs):
+        warnings.warn("the EventColumn is deprecated, and will be removed in "
+                      "a future gwpy release", DeprecationWarning)
+        super(EventColumn, cls).__new__(*args, **kwargs)
+
     def in_segmentlist(self, segmentlist):
         """Return the index of values lying inside the given segmentlist
 
@@ -99,24 +136,19 @@ class EventColumn(Column):
 
 # -- Table --------------------------------------------------------------------
 
+@inherit_io_registrations
 class EventTable(Table):
-    """A container for a table of events
+    """A container for a table of events.
 
-    This differs from the basic `~astropy.table.Table` in two ways
-
-    - GW-specific file formats are registered to use with
-      `EventTable.read` and `EventTable.write`
-    - columns of this table are of the `EventColumn` type, which provides
-      methods for filtering based on a `~gwpy.segments.SegmentList` (not
-      specifically time segments)
+    This object expands the default :class:`~astropy.table.Table`
+    with extra read/write formats, and methods to perform filtering,
+    rate calculations, and visualisation.
 
     See also
     --------
     astropy.table.Table
         for details on parameters for creating an `EventTable`
     """
-    Column = EventColumn
-
     # -- utilities ------------------------------
 
     def _get_time_column(self):
@@ -129,18 +161,26 @@ class EventTable(Table):
 
         So, its not foolproof.
         """
-        if 'time' in self.columns:
-            return 'time'
+        tcols = [
+            "time",  # standard
+            "tc",  # GWOSC catalogues
+            "peakGPS",  # gravityspy
+        ]
+        for col in tcols:
+            if col in self.columns:
+                return col
         try:
             time, = [name for name in self.columns if
                      isinstance(self[name][0], gps_types)]
-        except (ValueError, IndexError) as exc:
-            msg = ('cannot identify time column for table, no column '
-                   'named \'time\' and none with GPS dtypes')
-            if isinstance(exc, IndexError):
-                raise ValueError(msg)
-            exc.args = (msg,)
-            raise
+        except (ValueError, IndexError):
+            msg = (
+                "cannot identify time column for table, no column "
+                "named {0}, or {1!r}, and none with GPS dtypes".format(
+                    ", ".join(map(repr, tcols[:-1])),
+                    tcols[-1],
+                )
+            )
+            raise ValueError(msg)
         return time
 
     # -- i/o ------------------------------------
@@ -166,7 +206,10 @@ class EventTable(Table):
             the format of the given source files; if not given, an attempt
             will be made to automatically identify the format
 
-        selection : `str`, or `list` of `str`
+        columns : `list` of `str`, optional
+            the list of column names to read
+
+        selection : `str`, or `list` of `str`, optional
             one or more column filters with which to downselect the
             returned table rows as they as read, e.g. ``'snr > 5'``;
             multiple selections should be connected by ' && ', or given as
@@ -192,29 +235,14 @@ class EventTable(Table):
         ------
         astropy.io.registry.IORegistryError
             if the `format` cannot be automatically identified
+        IndexError
+            if ``source`` is an empty list
 
         Notes
         -----"""
-        # astropy's ASCII formats don't support on-the-fly selection, so
-        # we pop the selection argument out here
-        if str(kwargs.get('format')).startswith('ascii'):
-            selection = kwargs.pop('selection', [])
-            if isinstance(selection, string_types):
-                selection = [selection]
-        else:
-            selection = []
+        return io_read_multi(vstack, cls, source, *args, **kwargs)
 
-        # read the table
-        tab = io_read_multi(vstack, cls, source, *args, **kwargs)
-
-        # apply the selection if required:
-        if selection:
-            tab = tab.filter(*selection)
-
-        # and return
-        return tab
-
-    def write(self, target, *args, **kwargs):  # pylint: disable=arguments-differ
+    def write(self, target, *args, **kwargs):
         """Write this table to a file
 
         Parameters
@@ -242,7 +270,7 @@ class EventTable(Table):
 
         Notes
         -----"""
-        return io_write(self, target, *args, **kwargs)
+        return registry.write(self, target, *args, **kwargs)
 
     @classmethod
     def fetch(cls, format_, *args, **kwargs):
@@ -309,13 +337,43 @@ class EventTable(Table):
         fetcher = get_fetcher(format_, cls)
         return fetcher(*args, **kwargs)
 
+    @classmethod
+    def fetch_open_data(cls, catalog, columns=None, selection=None,
+                        host=DEFAULT_GWOSC_URL, **kwargs):
+        """Fetch events from an open-data catalogue hosted by GWOSC.
+
+        Parameters
+        ----------
+        catalog : `str`
+            the name of the catalog to fetch, e.g. ``'GWTC-1-confident'``
+
+        columns : `list` of `str`, optional
+            the list of column names to read
+
+        selection : `str`, or `list` of `str`, optional
+            one or more column filters with which to downselect the
+            returned events as they as read, e.g. ``'mass1 < 30'``;
+            multiple selections should be connected by ' && ', or given as
+            a `list`, e.g. ``'mchirp < 3 && distance < 500'`` or
+            ``['mchirp < 3', 'distance < 500']``
+
+        host : `str`, optional
+            the open-data host to use
+        """
+        from .io.losc import fetch_catalog
+        tab = fetch_catalog(catalog, columns=columns, selection=selection,
+                            host=host, **kwargs)
+        if type(tab) is cls:  # don't copy unless we need to
+            return tab
+        return cls(tab)
+
     # -- ligolw compatibility -------------------
 
     def get_column(self, name):
         """Return the `Column` with the given name
 
         This method is provided only for compatibility with the
-        :class:`glue.ligolw.table.Table`.
+        :class:`ligo.lw.table.Table`.
 
         Parameters
         ----------
@@ -485,7 +543,7 @@ class EventTable(Table):
         plot : `~gwpy.plot.Plot`
             the newly created figure
 
-        See Also
+        See also
         --------
         matplotlib.pyplot.figure
             for documentation of keyword arguments used to create the
@@ -529,7 +587,7 @@ class EventTable(Table):
         plot : `~gwpy.plot.Plot`
             the newly created figure
 
-        See Also
+        See also
         --------
         matplotlib.pyplot.figure
             for documentation of keyword arguments used to create the
@@ -546,6 +604,7 @@ class EventTable(Table):
         return self._plot('tile', self[x], self[y], self[w], self[h], **kwargs)
 
     def _plot(self, method, *args, **kwargs):
+        from matplotlib import rcParams
         from ..plot import Plot
         from ..plot.tex import label_to_latex
 
@@ -566,8 +625,10 @@ class EventTable(Table):
                 filter(attrgetter('isDefault_label'), (ax.xaxis, ax.yaxis)),
                 args[:2],
         ):
-            name = r'\texttt{{{0}}}'.format(label_to_latex(col.name))
-            if isinstance(col, Quantity):
+            name = col.name
+            if rcParams['text.usetex']:
+                name = r'\texttt{{{0}}}'.format(label_to_latex(col.name))
+            if col.unit is not None:
                 name += ' [{0}]'.format(col.unit.to_string('latex_inline'))
             axis.set_label_text(name)
             axis.isDefault_label = True
@@ -594,7 +655,7 @@ class EventTable(Table):
         plot : `~gwpy.plot.Plot`
             The newly created figure.
 
-        See Also
+        See also
         --------
         matplotlib.pyplot.figure
             for documentation of keyword arguments used to create the

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
-
+#
 # GWpy is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
@@ -38,14 +38,17 @@ import os
 import os.path
 import re
 import warnings
-from collections import namedtuple
 from functools import wraps
 
+from six.moves.http_client import HTTPException
 from six.moves.urllib.parse import urlparse
 
-from ..segments import (Segment, SegmentList)
+from ligo.segments import (
+    segment as LigoSegment,
+    segmentlist as LigoSegmentList,
+)
 from ..time import to_gps
-from .cache import (cache_segments, read_cache_entry, _iter_cache, _CacheEntry)
+from .cache import (cache_segments, read_cache_entry, _iter_cache)
 from .gwf import (num_channels, iter_channel_names)
 
 __author__ = 'Duncan Macleod <duncan.macleod@ligo.org>'
@@ -191,12 +194,12 @@ class FflConnection(object):
                   match=None, on_gaps='warn'):
         """Find all files of the given type in the [start, end) GPS interval.
         """
-        span = Segment(gpsstart, gpsend)
+        span = LigoSegment(gpsstart, gpsend)
         cache = [e for e in self._read_ffl_cache(site, frametype) if
                  e.observatory == site and e.description == frametype and
                  e.segment.intersects(span)]
         urls = [e.path for e in cache]
-        missing = SegmentList([span]) - cache_segments(cache)
+        missing = LigoSegmentList([span]) - cache_segments(cache)
 
         if match:
             match = re.compile(match)
@@ -247,7 +250,7 @@ def reconnect(connection):
 
     Returns
     -------
-    newconn : :class:`~gwdatafind.http.HTTPConnection`
+    newconn : :class:`~gwdatafind.http.HTTPConnection` or `FflConnection`
         the new open connection to the same `host:port` server
     """
     if isinstance(connection, FflConnection):
@@ -317,12 +320,22 @@ def _choose_connection(**datafind_kw):
 
 
 def with_connection(func):
+    """Decorate a function to open a new datafind connection if required
+
+    This method will inspect the ``connection`` keyword, and if `None`
+    (or missing), will use the ``host`` and ``port`` keywords to open
+    a new connection and pass it as ``connection=<new>`` to ``func``.
+    """
     @wraps(func)
     def wrapped(*args, **kwargs):
         if kwargs.get('connection') is None:
             kwargs['connection'] = _choose_connection(host=kwargs.get('host'),
                                                       port=kwargs.get('port'))
-        return func(*args, **kwargs)
+        try:
+            return func(*args, **kwargs)
+        except HTTPException:
+            kwargs['connection'] = reconnect(kwargs['connection'])
+            return func(*args, **kwargs)
     return wrapped
 
 
@@ -414,13 +427,12 @@ def find_frametype(channel, gpstime=None, frametype_match=None,
 
     # format GPS time(s)
     if isinstance(gpstime, (list, tuple)):
-        from ..segments import Segment
-        gpssegment = Segment(*gpstime)
+        gpssegment = LigoSegment(*gpstime)
         gpstime = gpssegment[0]
     else:
         gpssegment = None
     if gpstime is not None:
-        gpstime = to_gps(gpstime).gpsSeconds
+        gpstime = int(to_gps(gpstime))
 
     # if use gaps post-S5 GPStime, forcibly skip _GRBYYMMDD frametypes at CIT
     if frametype_match is None and gpstime is not None and gpstime > 875232014:
@@ -454,7 +466,7 @@ def find_frametype(channel, gpstime=None, frametype_match=None,
             continue
         ifos.add(ifo)
 
-        types = find_types(ifo, match=frametype_match, trend=chan.trend,
+        types = find_types(ifo, match=frametype_match, trend=chan.type,
                            connection=connection)
 
         # loop over types testing each in turn
@@ -603,6 +615,14 @@ def find_best_frametype(channel, start, end,
 @with_connection
 def find_types(observatory, match=None, trend=None,
                connection=None, **connection_kw):
+    """Find the available data types for a given observatory.
+
+    See also
+    --------
+    gwdatafind.http.HTTPConnection.find_types
+    FflConnection.find_types
+        for details on the underlying method(s)
+    """
     return sorted(connection.find_types(observatory, match=match),
                   key=lambda x: _type_priority(observatory, x, trend=trend))
 
@@ -610,6 +630,14 @@ def find_types(observatory, match=None, trend=None,
 @with_connection
 def find_urls(observatory, frametype, start, end, on_gaps='error',
               connection=None, **connection_kw):
+    """Find the URLs of files of a given data type in a GPS interval.
+
+    See also
+    --------
+    gwdatafind.http.HTTPConnection.find_urls
+    FflConnection.find_urls
+        for details on the underlying method(s)
+    """
     return connection.find_urls(observatory, frametype, start, end,
                                 on_gaps=on_gaps)
 
@@ -617,14 +645,20 @@ def find_urls(observatory, frametype, start, end, on_gaps='error',
 @with_connection
 def find_latest(observatory, frametype, gpstime=None, allow_tape=False,
                 connection=None, **connection_kw):
-    """Find the latest framepath for a given frametype
+    """Find the path of the latest file of a given data type.
+
+    See also
+    --------
+    gwdatafind.http.HTTPConnection.find_latest
+    FflConnection.find_latest
+        for details on the underlying method(s)
     """
     observatory = observatory[0]
     try:
         if gpstime is not None:
             gpstime = int(to_gps(gpstime))
-            path = connection.find_urls(observatory, frametype, gpstime,
-                                        gpstime+1, on_gaps='ignore')[-1]
+            path = find_urls(observatory, frametype, gpstime, gpstime+1,
+                             on_gaps='ignore', connection=connection)[-1]
         else:
             path = connection.find_latest(observatory, frametype,
                                           on_missing='ignore')[-1]

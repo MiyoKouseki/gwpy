@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -24,6 +24,7 @@ The frame format is defined in LIGO-T970130 available from dcc.ligo.org.
 from __future__ import (absolute_import, division)
 
 import os.path
+import warnings
 
 from six import string_types
 
@@ -31,10 +32,10 @@ from six import string_types
 # to give the user a bit more information
 import lalframe
 import lal
-#from lal.utils import CacheEntry
-from glue.lal import CacheEntry
 
-from ....io import cache as io_cache
+
+from ....io.cache import is_cache
+from ....io.utils import (file_list, file_path)
 from ....utils import lal as lalutils
 from ... import TimeSeries
 
@@ -63,22 +64,26 @@ def open_data_source(source):
     ValueError
         If the input format cannot be identified.
     """
-    if isinstance(source, io_cache.FILE_LIKE):
-        source = source.name
-    if isinstance(source, CacheEntry):
-        source = source.path
+    # -- preformatting
 
-    # read cache file
+    try:
+        source = file_path(source)
+    except ValueError:  # not parsable as a single file
+        pass
+
+    # import cache from file
     if (isinstance(source, string_types) and
             source.endswith(('.lcf', '.cache'))):
-        return lalframe.FrStreamCacheOpen(lal.CacheImport(source))
+        source = lal.CacheImport(source)
 
-    # read glue cache object
-    if isinstance(source, list) and io_cache.is_cache(source):
+    # reformat cache (or any list of files) as a lal cache object
+    if isinstance(source, list) and is_cache(source):
         cache = lal.Cache()
-        for entry in io_cache.file_list(source):
+        for entry in file_list(source):
             cache = lal.CacheMerge(cache, lal.CacheGlob(*os.path.split(entry)))
-        return lalframe.FrStreamCacheOpen(cache)
+        source = cache
+
+    # -- now we have a lal.Cache or a filename
 
     # read lal cache object
     if isinstance(source, lal.Cache):
@@ -109,7 +114,7 @@ def get_stream_duration(stream):
                             stream.epoch.gpsNanoSeconds)
     # loop over each file in the stream cache and query its duration
     nfile = stream.cache.length
-    duration = 0
+    duration = 0.
     for dummy_i in range(nfile):
         for dummy_j in range(lalframe.FrFileQueryNFrame(stream.file)):
             duration += lalframe.FrFileQueryDt(stream.file, 0)
@@ -121,9 +126,18 @@ def get_stream_duration(stream):
 
 # -- read ---------------------------------------------------------------------
 
-def read(source, channels, start=None, end=None, series_class=TimeSeries):
+def read(source, channels, start=None, end=None, series_class=TimeSeries,
+         scaled=None):
     """Read data from one or more GWF files using the LALFrame API
     """
+    # scaled must be provided to provide a consistent API with frameCPP
+    if scaled is not None:
+        warnings.warn(
+            "the `scaled` keyword argument is not supported by lalframe, "
+            "if you require ADC scaling, please install "
+            "python-ldas-tools-framecpp",
+        )
+
     stream = open_data_source(source)
 
     # parse times and restrict to available data
@@ -132,14 +146,10 @@ def read(source, channels, start=None, end=None, series_class=TimeSeries):
     streamdur = get_stream_duration(stream)
     if start is None:
         start = epoch
-    else:
-        start = max(epoch, lalutils.to_lal_ligotimegps(start))
+    start = max(epoch, lalutils.to_lal_ligotimegps(start))
     if end is None:
-        offset = float(start - epoch)
-        duration = streamdur - offset
-    else:
-        end = min(epoch + streamdur, end)
-        duration = float(end - start)
+        end = epoch + streamdur
+    duration = float(end - start)
 
     # read data
     out = series_class.DictClass()
@@ -152,7 +162,12 @@ def read(source, channels, start=None, end=None, series_class=TimeSeries):
 
 
 def _read_channel(stream, channel, start, duration):
-    dtype = lalframe.FrStreamGetTimeSeriesType(channel, stream)
+    try:
+        dtype = lalframe.FrStreamGetTimeSeriesType(channel, stream)
+    except RuntimeError as exc:
+        if str(exc).lower() == "wrong name":
+            exc.args = "channel '{}' not found".format(channel),
+        raise
     reader = lalutils.find_typed_function(dtype, 'FrStreamRead', 'TimeSeries',
                                           module=lalframe)
     return reader(stream, channel, start, duration, 0)
@@ -172,12 +187,15 @@ def write(tsdict, outfile, start=None, end=None,
 
     # get ifos list
     detectors = 0
+    _detidx = list(lalutils.LAL_DETECTORS.keys())
     for series in tsdict.values():
+        ifo = getattr(series.channel, "ifo", None)
         try:
-            idx = list(lalutils.LAL_DETECTORS.keys()).index(series.channel.ifo)
-            detectors |= 1 << 2*idx
-        except (KeyError, AttributeError, ValueError):
+            idx = _detidx.index(ifo)
+        except ValueError:  # don't worry about mismatched detectors
             continue
+        else:
+            detectors |= 1 << 2 * idx
 
     # create new frame
     frame = lalframe.FrameNew(start, duration, name, run, 0, detectors)

@@ -1,4 +1,4 @@
-/* Copyright (C) Duncan Macleod (2014)
+/* Copyright (C) Duncan Macleod (2014-2019)
  *
  * This file is part of GWpy.
  *
@@ -187,4 +187,8 @@ dl.classmethod table td:first-child, {
 .classmethod .rubric,
 .method .rubric {
 		margin-top: 10px;
+}
+
+div.seealso dd {
+		margin-left: 20px;
 }

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -20,18 +20,15 @@
 """
 
 import warnings
-from copy import deepcopy
 
 import numpy
 from numpy import fft as npfft
-from scipy import signal
 
 from astropy import units
 from astropy.io import registry as io_registry
 
 from ..types import Series
 from ..detector import Channel
-from ._fdcommon import fdfilter
 
 
 __author__ = "Duncan Macleod <duncan.macleod@ligo.org"
@@ -92,7 +89,7 @@ class FrequencySeries(Series):
        ~FrequencySeries.zpk
     """
     _default_xunit = units.Unit('Hz')
-    _print_slots = ['f0', 'df', 'epoch', 'name', 'channel', '_frequencies']
+    _print_slots = ['f0', 'df', 'epoch', 'name', 'channel']
 
     def __new__(cls, data, unit=None, f0=None, df=None, frequencies=None,
                 name=None, epoch=None, channel=None, **kwargs):
@@ -160,6 +157,11 @@ class FrequencySeries(Series):
         **kwargs
             Other keywords are (in general) specific to the given ``format``.
 
+        Raises
+        ------
+        IndexError
+            if ``source`` is an empty list
+
         Notes
         -----"""
         return io_registry.read(cls, source, *args, **kwargs)
@@ -210,10 +212,9 @@ class FrequencySeries(Series):
         out : :class:`~gwpy.timeseries.TimeSeries`
             the normalised, real-valued `TimeSeries`.
 
-        See Also
+        See also
         --------
-        :mod:`scipy.fftpack` for the definition of the DFT and conventions
-        used.
+        numpy.fft.irfft : The inverse (real) FFT function
 
         Notes
         -----
@@ -256,7 +257,7 @@ class FrequencySeries(Series):
         spectrum : `FrequencySeries`
             the frequency-domain filtered version of the input data
 
-        See Also
+        See also
         --------
         FrequencySeries.filter
             for details on how a digital ZPK-format filter is applied
@@ -284,14 +285,14 @@ class FrequencySeries(Series):
         out : `FrequencySeries`
             the interpolated version of the input `FrequencySeries`
 
-        See Also
+        See also
         --------
         numpy.interp
             for the underlying 1-D linear interpolation scheme
         """
         f0 = self.f0.decompose().value
         N = (self.size - 1) * (self.df.decompose().value / df) + 1
-        fsamples = numpy.arange(0, numpy.rint(N)) * df + f0
+        fsamples = numpy.arange(0, numpy.rint(N), dtype=self.dtype) * df + f0
         out = type(self)(numpy.interp(fsamples, self.frequencies.value,
                                       self.value))
         out.__array_finalize__(self)
@@ -333,6 +334,7 @@ class FrequencySeries(Series):
         ValueError
             if ``filt`` arguments cannot be interpreted properly
         """
+        from ._fdcommon import fdfilter
         return fdfilter(self, *filt, **kwargs)
 
     def filterba(self, *args, **kwargs):

@@ -1,7 +1,5 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
-# Copyright (C) Joseph Areeda (2015)
+# Copyright (C) Joseph Areeda (2015-2019)
 #
 # This file is part of GWpy.
 #
@@ -17,14 +15,15 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with GWpy.  If not, see <http://www.gnu.org/licenses/>.
-#
 
 """Spectrum plots
 """
 
 from astropy.time import Time
+import warnings
 
-from .cliproduct import (FrequencyDomainProduct, FFTMixin, unique)
+from .cliproduct import (FrequencyDomainProduct, FFTMixin)
+from ..utils import unique
 from ..plot import Plot
 from ..plot.tex import label_to_latex
 
@@ -62,11 +61,9 @@ class Spectrum(FFTMixin, FrequencyDomainProduct):
     def get_ylabel(self):
         """Text for y-axis label
         """
-        if len(self.units) == 1 and self.usetex:
+        if len(self.units) == 1:
             return r'ASD $\left({0}\right)$'.format(
                 self.units[0].to_string('latex').strip('$'))
-        elif len(self.units) == 1:
-            return 'ASD ({0})'.format(self.units[0].to_string('generic'))
         return 'ASD'
 
     def get_suptitle(self):
@@ -99,13 +96,31 @@ class Spectrum(FFTMixin, FrequencyDomainProduct):
         plot = Plot(figsize=self.figsize, dpi=self.dpi)
         ax = plot.gca()
 
-        for series in self.timeseries:
+        # handle user specified plot labels
+        if self.args.legend:
+            nlegargs = len(self.args.legend[0])
+        else:
+            nlegargs = 0
+        if nlegargs > 0 and nlegargs != self.n_datasets:
+            warnings.warn('The number of legends specified must match '
+                          'the number of time series'
+                          ' (channels * start times).  '
+                          'There are {:d} series and {:d} legends'.format(
+                            len(self.timeseries), len(self.args.legend)))
+            nlegargs = 0  # don't use  themm
+
+        for i in range(0, self.n_datasets):
+            series = self.timeseries[i]
+            if nlegargs:
+                label = self.args.legend[0][i]
+            else:
+                label = series.channel.name
+                if len(self.start_list) > 1:
+                    label += ', {0}'.format(series.epoch.gps)
+
             asd = series.asd(fftlength=fftlength, overlap=overlap)
             self.spectra.append(asd)
 
-            label = series.channel.name
-            if len(self.start_list) > 1:
-                label += ', {0}'.format(series.epoch.gps)
             if self.usetex:
                 label = label_to_latex(label)
 

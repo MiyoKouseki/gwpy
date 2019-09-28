@@ -1,23 +1,26 @@
 environment:
   matrix:
-    - MINICONDA: C:\Miniconda-x64
-      PYTHON_VERSION: 2.7
-    - MINICONDA: C:\Miniconda35-x64
-      PYTHON_VERSION: 3.5
-    - MINICONDA: C:\Miniconda36-x64
-      PYTHON_VERSION: 3.6
     - MINICONDA: C:\Miniconda37-x64
       PYTHON_VERSION: 3.7
+    - MINICONDA: C:\Miniconda36-x64
+      PYTHON_VERSION: 3.6
+    - MINICONDA: C:\Miniconda-x64
+      PYTHON_VERSION: 2.7
 install:
   # configure conda
-  - "set PATH=%MINICONDA%;%MINICONDA%\\Scripts;%PATH%"
+  - "set PATH=%MINICONDA%\\condabin;%PATH%"
+  - call "%MINICONDA%\\Scripts\\activate.bat"
   - conda config --set always_yes yes --set changeps1 no
   - conda config --add channels conda-forge
   - conda update --quiet conda pip
-  - conda info --all
+  # activate again for the (potential) new conda version
+  - call "%MINICONDA%\\Scripts\\activate.bat"
   # create a new environment for gwpy
   - conda create --name gwpy python=%PYTHON_VERSION%
-  - activate gwpy
+  - conda activate gwpy
+  # print details
+  - conda info --all
+  # fill it with our dependencies
   - python ci\\parse-conda-requirements.py requirements-dev.txt -o conda-reqs.txt
   - conda install --yes --file conda-reqs.txt
   # print everything we have
@@ -25,4 +28,12 @@ install:
 build_script:
   - python -m pip install .
 test_script:
-  - python -m pytest --pyargs gwpy --cov gwpy
+  # run scripts from a separate directory, so that we test the installed code
+  - mkdir "tests"
+  - pushd "tests" && python -m pytest --pyargs gwpy --cov gwpy --cov-report xml:coverage.xml --junitxml junit.xml --numprocesses 2 && popd
+after_test:
+  - "set _PYV=%PYTHON_VERSION:.=%"
+  - python -m pip install codecov
+  - python -m codecov --file .\tests\coverage.xml --flags Windows python%_PYV% conda
+on_finish:
+  - ps: (New-Object 'System.Net.WebClient').UploadFile("https://ci.appveyor.com/api/testresults/junit/$($env:APPVEYOR_JOB_ID)", (Resolve-Path .\tests\junit.xml))

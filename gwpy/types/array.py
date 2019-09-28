@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013-2016)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -27,8 +27,9 @@ critical to being able to view data with this class, used when copying and
 transforming instances of the class.
 """
 
-from math import modf
+import copy
 from decimal import Decimal
+from math import modf
 
 import numpy
 
@@ -393,6 +394,15 @@ class Array(Quantity):
 
     # -- array methods --------------------------
 
+    def __array_ufunc__(self, function, method, *inputs, **kwargs):
+        out = super(Array, self).__array_ufunc__(function, method,
+                                                 *inputs, **kwargs)
+        # if a ufunc returns a scalar, return a Quantity
+        if not out.ndim:
+            return Quantity(out, copy=False)
+        # otherwise return an array
+        return out
+
     def abs(self, axis=None, **kwargs):
         return self._wrap_function(numpy.abs, axis, **kwargs)
     abs.__doc__ = numpy.abs.__doc__
@@ -477,7 +487,7 @@ class Array(Quantity):
         y : `~astropy.units.Quantity`
             A copy of the input array, flattened to one dimension.
 
-        See Also
+        See also
         --------
         ravel : Return a flattened array.
         flat : A 1-D flat iterator over the array.
@@ -489,3 +499,13 @@ class Array(Quantity):
         <Quantity [1., 2., 3., 4.] m>
         """
         return super(Array, self).flatten(order=order).view(Quantity)
+
+    def copy(self, order='C'):
+        out = super(Array, self).copy(order=order)
+        for slot in self._metadata_slots:
+            old = getattr(self, '_{0}'.format(slot), None)
+            if old is not None:
+                setattr(out, slot, copy.copy(old))
+        return out
+
+    copy.__doc__ = Quantity.copy.__doc__

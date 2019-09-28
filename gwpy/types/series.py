@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013-2016)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -19,7 +19,6 @@
 """The `Series` is a one-dimensional array with metadata
 """
 
-from numbers import Number
 from warnings import warn
 from math import floor
 
@@ -110,9 +109,9 @@ class Series(Array):
     _metadata_slots = Array._metadata_slots + ('x0', 'dx', 'xindex')
     _default_xunit = Unit('')
     _ndim = 1
-    
+
     def __new__(cls, value, unit=None, x0=None, dx=None, xindex=None,
-                xunit=None, **kwargs):        
+                xunit=None, **kwargs):
         # check input data dimensions are OK
         shape = numpy.shape(value)
         if len(shape) != cls._ndim:
@@ -161,6 +160,91 @@ class Series(Array):
 
     # -- series properties ----------------------
 
+    def _update_index(self, axis, key, value):
+        """Update the current axis index based on a given key or value
+
+        This is an internal method designed to set the origin or step for
+        an index, whilst updating existing Index arrays as appropriate
+
+        Examples
+        --------
+        >>> self._update_index("x0", 0)
+        >>> self._update_index("dx", 0)
+
+        To actually set an index array, use `_set_index`
+        """
+        # delete current value if given None
+        if value is None:
+            return delattr(self, key)
+
+        _key = "_{}".format(key)
+        index = "{[0]}index".format(axis)
+        unit = "{[0]}unit".format(axis)
+
+        # convert float to Quantity
+        if not isinstance(value, Quantity):
+            try:
+                value = Quantity(value, getattr(self, unit))
+            except TypeError:
+                value = Quantity(float(value), getattr(self, unit))
+
+        # if value is changing, delete current index
+        try:
+            curr = getattr(self, _key)
+        except AttributeError:
+            delattr(self, index)
+        else:
+            if (
+                    value is None or
+                    getattr(self, key) is None or
+                    not value.unit.is_equivalent(curr.unit) or
+                    value != curr
+            ):
+                delattr(self, index)
+
+        # set new value
+        setattr(self, _key, value)
+        return value
+
+    def _set_index(self, key, index):
+        """Set a new index array for this series
+        """
+        axis = key[0]
+        origin = "{}0".format(axis)
+        delta = "d{}".format(axis)
+        if index is None:
+            return delattr(self, key)
+        if not isinstance(index, Index):
+            try:
+                unit = index.unit
+            except AttributeError:
+                unit = getattr(self, "_default_{}unit".format(axis))
+            index = Index(index, unit=unit, copy=False)
+        setattr(self, origin, index[0])
+        if index.regular:
+            setattr(self, delta, index[1] - index[0])
+        else:
+            delattr(self, delta)
+        setattr(self, "_{}".format(key), index)
+
+    def _index_span(self, axis):
+        from ..segments import Segment
+        axisidx = ("x", "y", "z").index(axis)
+        unit = getattr(self, "{}unit".format(axis))
+        try:
+            delta = getattr(self, "d{}".format(axis)).to(unit).value
+        except AttributeError:  # irregular xindex
+            index = getattr(self, "{}index".format(axis))
+            try:
+                delta = index.value[-1] - index.value[-2]
+            except IndexError:
+                raise ValueError("Cannot determine x-axis stride (dx)"
+                                 "from a single data point")
+            return Segment(index.value[0], index.value[-1] + delta)
+        else:
+            origin = getattr(self, "{}0".format(axis)).to(unit).value
+            return Segment(origin, origin + self.shape[axisidx] * delta)
+
     # x0
     @property
     def x0(self):
@@ -176,23 +260,7 @@ class Series(Array):
 
     @x0.setter
     def x0(self, value):
-        if value is None:
-            del self.x0
-            return
-        if not isinstance(value, Quantity):
-            try:
-                value = Quantity(value, self.xunit)
-            except TypeError:
-                value = Quantity(float(value), self.xunit)
-        # if setting new x0, delete xindex
-        try:
-            x0 = self._x0
-        except AttributeError:
-            del self.xindex
-        else:
-            if value is None or self.x0 is None or value != x0:
-                del self.xindex
-        self._x0 = value
+        self._update_index("x", "x0", value)
 
     @x0.deleter
     def x0(self):
@@ -216,30 +284,15 @@ class Series(Array):
             except AttributeError:
                 self._dx = Quantity(1, self.xunit)
             else:
-                #if not self.xindex.regular:
-                #    raise AttributeError("This series has an irregular x-axis "
-                #                         "index, so 'dx' is not well defined")
+                if not self.xindex.regular:
+                    raise AttributeError("This series has an irregular x-axis "
+                                         "index, so 'dx' is not well defined")
                 self._dx = self.xindex[1] - self.xindex[0]
             return self._dx
 
     @dx.setter
     def dx(self, value):
-        # delete if None
-        if value is None:
-            del self.dx
-            return
-        # convert float to Quantity
-        if not isinstance(value, Quantity):
-            value = Quantity(value, self.xunit)
-        # if value is changing, delete xindex
-        try:
-            dx = self._dx
-        except AttributeError:
-            del self.xindex
-        else:
-            if value is None or self.dx is None or value != dx:
-                del self.xindex
-        self._dx = value
+        self._update_index("x", "dx", value)
 
     @dx.deleter
     def dx(self):
@@ -258,28 +311,12 @@ class Series(Array):
         try:
             return self._xindex
         except AttributeError:
-            # create regular index on-the-fly            
-            self._xindex = Index(
-                self.x0 + (numpy.arange(self.shape[0]) * self.dx), copy=False)
+            self._xindex = Index.define(self.x0, self.dx, self.shape[0])
             return self._xindex
 
     @xindex.setter
     def xindex(self, index):
-        if index is None:
-            del self.xindex
-            return
-        if not isinstance(index, Index):
-            try:
-                unit = index.unit
-            except AttributeError:
-                unit = self._default_xunit
-            index = Index(index, unit=unit, copy=False)
-        self.x0 = index[0]
-        if index.regular:
-            self.dx = index[1] - index[0]
-        else:
-            del self.dx
-        self._xindex = index
+        self._set_index("xindex", index)
 
     @xindex.deleter
     def xindex(self):
@@ -318,19 +355,7 @@ class Series(Array):
 
         :type: `~gwpy.segments.Segment`
         """
-        from ..segments import Segment
-        try:
-            dx = self.dx.to(self.xunit).value
-        except AttributeError:  # irregular xindex
-            try:
-                dx = self.xindex.value[-1] - self.xindex.value[-2]
-            except IndexError:
-                raise ValueError("Cannot determine x-axis stride (dx)"
-                                 "from a single data point")
-            return Segment(self.xindex.value[0], self.xindex.value[-1] + dx)
-        else:
-            x0 = self.x0.to(self.xunit).value
-            return Segment(x0, x0+self.shape[0]*dx)
+        return self._index_span("x")
 
     # -- series i/o -----------------------------
 
@@ -367,6 +392,11 @@ class Series(Array):
         -------
         data : `Series`
 
+        Raises
+        ------
+        IndexError
+            if ``source`` is an empty list
+
         Notes
         -----"""
         return io_registry.read(cls, source, *args, **kwargs)
@@ -402,7 +432,7 @@ class Series(Array):
         figure : `~matplotlib.figure.Figure`
             the newly created figure, with populated Axes.
 
-        See Also
+        See also
         --------
         matplotlib.pyplot.figure
             for documentation of keyword arguments used to create the
@@ -421,7 +451,6 @@ class Series(Array):
             kwargs.setdefault('xlim', (self.dx.value, self.xspan[1]))
 
         # make plot
-        #print(kwargs)
         plot = Plot(self, method=method, **kwargs)
 
         # set default y-axis label (xlabel is set by Plot())
@@ -537,7 +566,7 @@ class Series(Array):
             as the input, except along `axis` where the dimension is
             smaller by `n`.
 
-        See Also
+        See also
         --------
         numpy.diff
             for documentation on the underlying method
@@ -748,7 +777,7 @@ class Series(Array):
         if type(other) == type(self) and other.unit == self.unit:
             self.value[-N:] = other.value[-N:]
         # otherwise if its just a numpy array
-        elif type(other) is type(self.value) or (
+        elif type(other) is type(self.value) or (  # noqa: E721
                 other.dtype.name.startswith('uint')):
             self.value[-N:] = other[-N:]
         else:
@@ -872,39 +901,49 @@ class Series(Array):
         `Series` span, warnings will be printed and the limits will
         be restricted to the :attr:`~Series.xspan`
         """
+        x0, x1 = self.xspan
+        xtype = type(x0)
+        if isinstance(start, Quantity):
+            start = start.to(self.xunit).value
+        if isinstance(end, Quantity):
+            end = end.to(self.xunit).value
+
         # pin early starts to time-series start
-        if start == self.xspan[0]:
+        if start == x0:
             start = None
-        elif start is not None and start < self.xspan[0]:
+        elif start is not None and xtype(start) < x0:
             warn('%s.crop given start smaller than current start, '
                  'crop will begin when the Series actually starts.'
                  % type(self).__name__)
             start = None
+
         # pin late ends to time-series end
-        if end == self.xspan[1]:
+        if end == x1:
             end = None
-        if end is not None and end > self.xspan[1]:
+        if end is not None and xtype(end) > x1:
             warn('%s.crop given end larger than current end, '
                  'crop will end when the Series actually ends.'
                  % type(self).__name__)
             end = None
+
         # find start index
         if start is None:
             idx0 = None
         else:
-            idx0 = int(float(start - self.xspan[0]) // self.dx.value)
+            idx0 = int((xtype(start) - x0) // self.dx.value)
+
         # find end index
         if end is None:
             idx1 = None
         else:
-            idx1 = int(float(end - self.xspan[0]) // self.dx.value)
+            idx1 = int((xtype(end) - x0) // self.dx.value)
             if idx1 >= self.size:
                 idx1 = None
+
         # crop
         if copy:
             return self[idx0:idx1].copy()
-        else:
-            return self[idx0:idx1]
+        return self[idx0:idx1]
 
     def pad(self, pad_width, **kwargs):
         """Pad this series to a new size

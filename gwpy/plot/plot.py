@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -22,7 +22,10 @@
 import itertools
 import importlib
 import warnings
-from collections import (KeysView, ValuesView)
+try:
+    from collections.abc import (KeysView, ValuesView)
+except ImportError:  # python < 3.3
+    from collections import (KeysView, ValuesView)
 
 from six.moves import zip_longest
 
@@ -262,6 +265,10 @@ class Plot(figure.Figure):
         # mainly for user convenience. However, as of matplotlib-3.0.0,
         # pyplot.show() ends up calling _back_ to Plot.show(),
         # so we have to be careful not to end up in a recursive loop
+        #
+        # Developer note: if we ever make it pinning to matplotlib >=3.0.0
+        #                 this method can likely be completely removed
+        #
         import inspect
         try:
             callframe = inspect.currentframe().f_back
@@ -281,7 +288,10 @@ class Plot(figure.Figure):
         # block in GUI loop (stolen from mpl.backend_bases._Backend.show)
         if block:
             backend_mod = get_backend_mod()
-            backend_mod.Show().mainloop()
+            try:
+                backend_mod.Show().mainloop()
+            except AttributeError:  # matplotlib < 2.1.0
+                backend_mod.show.mainloop()
 
     def save(self, *args, **kwargs):
         """Save the figure to disk.
@@ -359,7 +369,7 @@ class Plot(figure.Figure):
         cbar : `~matplotlib.colorbar.Colorbar`
             the newly added `Colorbar`
 
-        See Also
+        See also
         --------
         matplotlib.figure.Figure.colorbar
         matplotlib.colorbar.Colorbar
@@ -562,7 +572,7 @@ def _group_axes_data(inputs, separate=None, flat=False):
         if any(isinstance(x, iterable_types + (dict,)) for x in inputs):
             separate = True
         # if data are of different types, default to separate
-        elif not all(type(x) is type(inputs[0]) for x in inputs):  # nopep8
+        elif not all(type(x) is type(inputs[0]) for x in inputs):  # noqa: E721
             separate = True
 
     # build list of lists

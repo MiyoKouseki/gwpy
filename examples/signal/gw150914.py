@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-# Copyright (C) Duncan Macleod (2016)
+# -*- coding: utf-8 -*-
+# Copyright (C) Duncan Macleod (2016-2019)
 #
 # This file is part of GWpy.
 #
@@ -31,7 +32,7 @@ well as notch out fixed frequencies polluted by known artefacts.
 __author__ = "Duncan Macleod <duncan.macleod@ligo.org>"
 __currentmodule__ = 'gwpy.timeseries'
 
-# First we download the raw strain data from the LOSC public archive:
+# First we download the raw strain data from the GWOSC public archive:
 
 from gwpy.timeseries import TimeSeries
 hdata = TimeSeries.fetch_open_data('H1', 1126259446, 1126259478)
@@ -89,7 +90,7 @@ ax1.set_title('LIGO-Hanford strain data around GW150914')
 ax1.text(1.0, 1.01, 'Unfiltered data', transform=ax1.transAxes, ha='right')
 ax1.set_ylabel('Amplitude [strain]', y=-0.2)
 ax2.set_ylabel('')
-ax2.text(1.0, 1.01, '50-250\,Hz bandpass, notches at 60, 120, 180 Hz',
+ax2.text(1.0, 1.01, r'50-250\,Hz bandpass, notches at 60, 120, 180 Hz',
          transform=ax2.transAxes, ha='right')
 plot.show()
 plot.close()  # hide

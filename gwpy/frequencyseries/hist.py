@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -23,10 +23,10 @@ from six.moves import range
 
 import numpy
 
-from astropy import units
 from astropy.io import registry as io_registry
+from astropy.units import Quantity
 
-from ..types import (Quantity, Array2D)
+from ..types import Array2D
 from ..types.sliceutils import null_slice
 from ..segments import Segment
 from . import FrequencySeries
@@ -180,6 +180,11 @@ class SpectralVariance(Array2D):
         **kwargs
             Other keywords are (in general) specific to the given ``format``.
 
+        Raises
+        ------
+        IndexError
+            if ``source`` is an empty list
+
         Notes
         -----"""
         return io_registry.read(cls, source, *args, **kwargs)
@@ -254,10 +259,10 @@ class SpectralVariance(Array2D):
         specvar : `SpectralVariance`
             2D-array of spectral frequency-amplitude counts
 
-        See Also
+        See also
         --------
-        :func:`numpy.histogram`
-            for details on specifying bins and weights
+        numpy.histogram
+            The histogram function
         """
         # parse args and kwargs
         if not spectrograms:
@@ -275,7 +280,7 @@ class SpectralVariance(Array2D):
 
         # get data and bins
         spectrogram = spectrograms[0]
-        data = numpy.vstack(s.value for s in spectrograms)
+        data = numpy.vstack([s.value for s in spectrograms])
         if bins is None:
             if low is None and log:
                 low = numpy.log10(data.min() / 2)

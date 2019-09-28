@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -20,10 +20,11 @@
 """
 
 import os
+import re
 
 from ... import cli
-from ...tests.utils import skip_missing_dependency
-from ...tests.mocks import mock
+from ...testing.compat import mock
+from ...testing.utils import skip_missing_dependency
 from .base import (update_namespace, mock_nds2_connection)
 from .test_spectrogram import TestCliSpectrogram as _TestCliSpectrogram
 
@@ -50,9 +51,18 @@ class TestCliQtransform(_TestCliSpectrogram):
         assert prod.qxfrm_args['qrange'] == (100., 110.)
 
     def test_get_title(self, dataprod):
-        t = ('Q=45.25, whitened, calc f-range=[36.01, 161.51], '
-             'calc e-range=[-0.13, 21.50]')
-        assert dataprod.get_title() == t
+        _float_reg = r"[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?"
+        title_reg = re.compile(
+            r"\A"
+            r"q: {float}, "
+            r"tres: {float}, "
+            r"whitened, "
+            r"f-range: \[{float}, {float}\], "
+            r"e-range: \[{float}, {float}\]"
+            r"\Z".format(float=_float_reg),
+            re.I,
+        )
+        assert title_reg.match(dataprod.get_title())
 
     def test_get_suptitle(self, prod):
         assert prod.get_suptitle() == 'Q-transform: {0}'.format(

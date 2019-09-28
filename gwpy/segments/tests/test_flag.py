@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2014)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -20,6 +20,7 @@
 """
 
 import os.path
+import re
 import tempfile
 from io import BytesIO
 from ssl import SSLError
@@ -35,8 +36,9 @@ from matplotlib import rc_context
 from ...plot import SegmentAxes
 from ...segments import (Segment, SegmentList,
                          DataQualityFlag, DataQualityDict)
-from ...tests import (mocks, utils)
-from ...tests.mocks import mock
+from ...testing import (mocks, utils)
+from ...testing.compat import mock
+from ...utils.misc import null_context
 
 __author__ = 'Duncan Macleod <duncan.macleod@ligo.org>'
 
@@ -65,7 +67,7 @@ VETO_DEFINER_FILE = """<?xml version='1.0' encoding='utf-8'?>
         </Stream>
     </Table>
 </LIGO_LW>
-"""
+"""  # noqa: E501
 
 
 @pytest.fixture(scope='module')
@@ -164,17 +166,60 @@ def query_segdb(query_func, *args, **kwargs):
         pytest.skip(str(e))
 
 
-def query_dqsegdb(query_func, *args, **kwargs):
-    """Mock a query to an aLIGO DQSEGDB database
+def segdb_expand_version_number(min_, max_):
+    def expand_version_number(engine, segdef):
+        ifo, name, version, start_time, end_time, start_pad, end_pad = segdef
+        if version != '*':
+            return [segdef]
+        return [[ifo, name, v, start_time, end_time, start_pad, end_pad] for
+                v in range(min_, max_+1)[::-1]]
+
+    return expand_version_number
+
+
+def segdb_query_segments(result):
+    def query_segments(engine, tablename, segdefs):
+        out = []
+        for ifo, flag, version, start, end, startpad, endpad in segdefs:
+            flag = '%s:%s:%d' % (ifo, flag, version)
+            if flag not in result:
+                out.append([])
+            if tablename == 'segment':
+                out.append(result[flag].active)
+            else:
+                out.append(result[flag].known)
+        return out
+    return query_segments
+
+
+def dqsegdb2_query_segments(result, deactivated=False,
+                            active_indicates_ifo_badness=False, **kwargs):
+    """Build a mock of `dqsegdb2.query.query_segments` for testing
     """
-    try:
-        with mock.patch('dqsegdb.apicalls.dqsegdbQueryTimes',
-                        mocks.dqsegdb_query_times(QUERY_RESULT)), \
-             mock.patch('dqsegdb.apicalls.dqsegdbCascadedQuery',
-                        mocks.dqsegdb_cascaded_query(QUERY_RESULT)):
-            return query_func(*args, **kwargs)
-    except ImportError as e:
-        pytest.skip(str(e))
+    def query_segments(flag, start, end, host=None):
+        try:
+            ifo, name, version = flag.split(':')
+            version = int(version)
+        except ValueError:
+            ifo, name = flag.split(':', 1)
+            version = None
+        span = SegmentList([Segment(start, end)])
+        reflag = re.compile(flag)
+        try:
+            actual = list(filter(reflag.match, result))[0]
+        except IndexError:
+            raise HTTPError('test-url/', 404, 'Not found', None, None)
+        return {
+            'ifo': ifo,
+            'name': name,
+            'version': version,
+            'known': list(map(tuple, result[actual].known & span)),
+            'active': list(map(tuple, result[actual].active & span)),
+            'query_information': {},
+            'metadata': kwargs,
+        }
+
+    return query_segments
 
 
 # -- DataQualityFlag ----------------------------------------------------------
@@ -393,9 +438,9 @@ class TestDataQualityFlag(object):
         with pytest.raises(TypeError):
             flag.pad(*PADDING, kwarg='test')
 
-    @utils.skip_missing_dependency('glue.ligolw.lsctables')
+    @utils.skip_missing_dependency('ligo.lw.lsctables')
     def test_from_veto_def(self):
-        from glue.ligolw.lsctables import VetoDef
+        from ligo.lw.lsctables import VetoDef
 
         def veto_def(ifo, name, version, **kwargs):
             vdef = VetoDef()
@@ -420,22 +465,18 @@ class TestDataQualityFlag(object):
         assert f.name == 'X1:TEST-FLAG'
         assert f.version is None
 
-    @utils.skip_missing_dependency('lal')
-    @utils.skip_missing_dependency('dqsegdb')
     def test_populate(self):
         name = QUERY_FLAGS[0]
         flag = self.TEST_CLASS(name, known=QUERY_RESULT[name].known)
 
-        with mock.patch('dqsegdb.apicalls.dqsegdbQueryTimes',
-                        mocks.dqsegdb_query_times(QUERY_RESULT)):
+        with mock.patch('gwpy.segments.flag.query_segments',
+                        dqsegdb2_query_segments(QUERY_RESULT)):
             flag.populate()
         utils.assert_flag_equal(flag, QUERY_RESULTC[name])
 
     # -- test I/O -------------------------------
 
     @pytest.mark.parametrize('format, ext, rw_kwargs, simple', [
-        ('ligolw', 'xml', {}, False),
-        ('ligolw', 'xml.gz', {}, False),
         ('hdf5', 'hdf5', {'path': 'test-dqflag'}, False),
         ('hdf5', 'h5', {'path': 'test-dqflag'}, False),
         ('json', 'json', {}, True),
@@ -458,104 +499,139 @@ class TestDataQualityFlag(object):
 
         # perform complicated test
         else:
-            try:
-                _read_write(autoidentify=False)
-            except ImportError as e:
-                pytest.skip(str(e))
+            _read_write(autoidentify=False)
             with pytest.raises(IOError):
                 _read_write(autoidentify=True)
             _read_write(autoidentify=True, write_kw={'overwrite': True})
 
+    def test_read_write_hdf5(self, flag):
+        with utils.TemporaryFilename(suffix=".h5") as fp:
+            flag.write(fp, path="test")
+            f2 = self.TEST_CLASS.read(fp, path="test", format="hdf5")
+            utils.assert_flag_equal(f2, flag)
+
+            # test direct access from dataset
+            with h5py.File(fp, "r") as h5f:
+                f2 = self.TEST_CLASS.read(h5f["test"])
+                utils.assert_flag_equal(f2, flag)
+
+            # test auto-discover of single dataset
+            f2 = self.TEST_CLASS.read(fp)
+            utils.assert_flag_equal(f2, flag)
+
     @utils.skip_missing_dependency('glue.ligolw.lsctables')
+    @pytest.mark.parametrize("ilwdchar_compat", [
+        pytest.param(
+            False,
+            marks=utils.skip_missing_dependency("ligo.lw.lsctables"),
+        ),
+        pytest.param(
+            True,
+            marks=utils.skip_missing_dependency("glue.ligolw.lsctables"),
+        ),
+    ])
+    def test_read_write_ligolw(self, flag, ilwdchar_compat):
+        utils.test_read_write(
+            flag, "ligolw", extension="xml",
+            assert_equal=utils.assert_flag_equal,
+            autoidentify=False,
+            read_kw={}, write_kw={"ilwdchar_compat": ilwdchar_compat},
+        )
+
+    @utils.skip_missing_dependency('ligo.lw.lsctables')
     def test_write_ligolw_attrs(self, flag):
         from gwpy.io.ligolw import read_table
         with tempfile.NamedTemporaryFile(suffix='.xml') as f:
-            flag.write(f, format='ligolw',
-                       attrs={'process_id': 'process:process_id:100'})
+            flag.write(
+                f,
+                format='ligolw',
+                attrs={'process_id': 100},
+                ilwdchar_compat=False,
+            )
             segdeftab = read_table(f, 'segment_definer')
-            assert str(segdeftab[0].process_id) == (
-                'process:process_id:100')
+            assert int(segdeftab[0].process_id) == 100
 
     # -- test queries ---------------------------
 
-    @pytest.mark.parametrize('api', ('dqsegdb', 'segdb'))
-    def test_query(self, api):
-        try:
-            if api == 'dqsegdb':
-                result = query_dqsegdb(self.TEST_CLASS.query, QUERY_FLAGS[0],
-                                       0, 10)
-                RESULT = QUERY_RESULT[QUERY_FLAGS[0]].copy().coalesce()
-            else:
-                result = query_segdb(self.TEST_CLASS.query, QUERY_FLAGS[0],
-                                     0, 10,
-                                     url='https://geosegdb.does.not.exist')
-                RESULT = QUERY_RESULT[QUERY_FLAGS[0]]
-        except ImportError as e:
-            pytest.skip(str(e))
+    def test_query(self):
+        with mock.patch('gwpy.segments.flag.query_segments',
+                        dqsegdb2_query_segments(QUERY_RESULT)):
+            result = self.TEST_CLASS.query(QUERY_FLAGS[0], 0, 10)
 
         assert isinstance(result, self.TEST_CLASS)
+        RESULT = QUERY_RESULT[QUERY_FLAGS[0]].copy().coalesce()
         utils.assert_segmentlist_equal(result.known, RESULT.known)
         utils.assert_segmentlist_equal(result.active, RESULT.active)
 
     def test_query_segdb(self):
-        result = query_segdb(self.TEST_CLASS.query_segdb,
-                             QUERY_FLAGS[0], 0, 10)
+        with pytest.deprecated_call():
+            result = query_segdb(self.TEST_CLASS.query_segdb,
+                                 QUERY_FLAGS[0], 0, 10)
         RESULT = QUERY_RESULT[QUERY_FLAGS[0]]
 
         assert isinstance(result, self.TEST_CLASS)
         utils.assert_segmentlist_equal(result.known, RESULT.known)
         utils.assert_segmentlist_equal(result.active, RESULT.active)
 
-        result2 = query_segdb(self.TEST_CLASS.query_segdb,
-                              QUERY_FLAGS[0], (0, 10))
+        with pytest.deprecated_call():
+            result2 = query_segdb(self.TEST_CLASS.query_segdb,
+                                  QUERY_FLAGS[0], (0, 10))
         utils.assert_flag_equal(result, result2)
 
-        result2 = query_segdb(self.TEST_CLASS.query_segdb,
-                              QUERY_FLAGS[0], SegmentList([(0, 10)]))
+        with pytest.deprecated_call():
+            result2 = query_segdb(self.TEST_CLASS.query_segdb,
+                                  QUERY_FLAGS[0], SegmentList([(0, 10)]))
         utils.assert_flag_equal(result, result2)
 
-        with pytest.raises(ValueError):
-            self.TEST_CLASS.query_segdb(QUERY_FLAGS[0], 1, 2, 3)
-        with pytest.raises(ValueError):
-            self.TEST_CLASS.query_segdb(QUERY_FLAGS[0], (1, 2, 3))
+        with pytest.deprecated_call():
+            with pytest.raises(ValueError):
+                self.TEST_CLASS.query_segdb(QUERY_FLAGS[0], 1, 2, 3)
+            with pytest.raises(ValueError):
+                self.TEST_CLASS.query_segdb(QUERY_FLAGS[0], (1, 2, 3))
 
     @pytest.mark.parametrize('name, flag', [
         (QUERY_FLAGS[0], QUERY_FLAGS[0]),  # regular query
         (QUERY_FLAGS[0].rsplit(':', 1)[0], QUERY_FLAGS[0]),  # versionless
     ])
+    @mock.patch('gwpy.segments.flag.query_segments',
+                dqsegdb2_query_segments(QUERY_RESULT))
     def test_query_dqsegdb(self, name, flag):
-        result = query_dqsegdb(self.TEST_CLASS.query_dqsegdb, name, 0, 10)
+        # standard query
+        result = self.TEST_CLASS.query_dqsegdb(name, 0, 10)
         RESULT = QUERY_RESULTC[flag]
-
         assert isinstance(result, self.TEST_CLASS)
         utils.assert_segmentlist_equal(result.known, RESULT.known)
         utils.assert_segmentlist_equal(result.active, RESULT.active)
 
-        result2 = query_dqsegdb(self.TEST_CLASS.query_dqsegdb, name, (0, 10))
+        # segment as tuple
+        result2 = self.TEST_CLASS.query_dqsegdb(name, (0, 10))
         utils.assert_flag_equal(result, result2)
 
-        result2 = query_dqsegdb(self.TEST_CLASS.query_dqsegdb,
-                                name, SegmentList([(0, 10)]))
+        # segmentlist
+        result2 = self.TEST_CLASS.query_dqsegdb(name, SegmentList([(0, 10)]))
         utils.assert_flag_equal(result, result2)
 
+        # flag name malformed
         with pytest.raises(ValueError):
-            query_dqsegdb(self.TEST_CLASS.query_dqsegdb, 'BAD-FLAG_NAME',
-                          SegmentList([(0, 10)]))
+            self.TEST_CLASS.query_dqsegdb('BAD-FLAG_NAME',
+                                          SegmentList([(0, 10)]))
 
+        # flag not in database
         with pytest.raises(HTTPError) as exc:
-            query_dqsegdb(self.TEST_CLASS.query_dqsegdb,
-                          'X1:GWPY-TEST:0', 0, 10)
+            self.TEST_CLASS.query_dqsegdb('X1:GWPY-TEST:0', 0, 10)
         assert str(exc.value) == 'HTTP Error 404: Not found [X1:GWPY-TEST:0]'
 
+        # bad syntax
         with pytest.raises(ValueError):
             self.TEST_CLASS.query_dqsegdb(QUERY_FLAGS[0], 1, 2, 3)
         with pytest.raises(ValueError):
             self.TEST_CLASS.query_dqsegdb(QUERY_FLAGS[0], (1, 2, 3))
 
+    @mock.patch('gwpy.segments.flag.query_segments',
+                dqsegdb2_query_segments(QUERY_RESULT))
     def test_query_dqsegdb_multi(self):
         segs = SegmentList([Segment(0, 2), Segment(8, 10)])
-        result = query_dqsegdb(self.TEST_CLASS.query_dqsegdb,
-                               QUERY_FLAGS[0], segs)
+        result = self.TEST_CLASS.query_dqsegdb(QUERY_FLAGS[0], segs)
         RESULT = QUERY_RESULTC[QUERY_FLAGS[0]]
 
         assert isinstance(result, self.TEST_CLASS)
@@ -681,7 +757,7 @@ class TestDataQualityDict(object):
 
     # -- test I/O -------------------------------
 
-    @utils.skip_missing_dependency('glue.ligolw.lsctables')
+    @utils.skip_missing_dependency('ligo.lw.lsctables')
     def test_from_veto_definer_file(self, veto_definer):
         # read veto definer
         vdf = self.TEST_CLASS.from_veto_definer_file(veto_definer)
@@ -692,7 +768,7 @@ class TestDataQualityDict(object):
         assert name in vdf
         utils.assert_segmentlist_equal(vdf[name].known,
                                        [(100, float('inf'))])
-        assert vdf[name].category is 1
+        assert vdf[name].category == 1
         assert vdf[name].padding == (-1, 2)
 
         # test ifo kwarg
@@ -707,19 +783,11 @@ class TestDataQualityDict(object):
         assert 'X1:TEST-FLAG_2:1' not in vdf
 
     @pytest.mark.parametrize('format, ext, dep, rw_kwargs', [
-        ('ligolw', 'xml', 'glue.ligolw.lsctables', {}),
-        ('ligolw', 'xml.gz', 'glue.ligolw.lsctables', {}),
         ('hdf5', 'hdf5', 'h5py', {}),
         ('hdf5', 'h5', 'h5py', {}),
         ('hdf5', 'hdf5', 'h5py', {'path': 'test-dqdict'}),
     ])
     def test_read_write(self, instance, format, ext, dep, rw_kwargs):
-        from importlib import import_module
-        try:
-            import_module(dep)
-        except ImportError as e:
-            pytest.skip(str(e))
-
         # define assertion
         def _assert(a, b):
             return utils.assert_dict_equal(a, b, utils.assert_flag_equal)
@@ -739,6 +807,27 @@ class TestDataQualityDict(object):
         with pytest.raises(IOError):
             _read_write(autoidentify=True)
         _read_write(autoidentify=True, write_kw={'overwrite': True})
+
+    @pytest.mark.parametrize("ilwdchar_compat", [
+        pytest.param(
+            False,
+            marks=utils.skip_missing_dependency("ligo.lw.lsctables"),
+        ),
+        pytest.param(
+            True,
+            marks=utils.skip_missing_dependency("glue.ligolw.lsctables"),
+        ),
+    ])
+    def test_read_write_ligolw(self, instance, ilwdchar_compat):
+        def _assert(a, b):
+            return utils.assert_dict_equal(a, b, utils.assert_flag_equal)
+        utils.test_read_write(
+            instance, "ligolw", extension="xml",
+            assert_equal=_assert,
+            autoidentify=False,
+            read_kw={},
+            write_kw={"ilwdchar_compat": ilwdchar_compat},
+        )
 
     def test_read_on_missing(self, instance):
         with h5py.File('test', driver='core', backing_store=False) as h5f:
@@ -768,49 +857,77 @@ class TestDataQualityDict(object):
             with pytest.raises(ValueError) as exc:
                 _read(on_missing='blah')
 
+    @pytest.mark.parametrize("ilwdchar_compat", [
+        pytest.param(  # default `None` maps to `True` for now
+            None,
+            marks=utils.skip_missing_dependency("ligo.lw.lsctables"),
+        ),
+        pytest.param(
+            False,
+            marks=utils.skip_missing_dependency("ligo.lw.lsctables"),
+        ),
+        pytest.param(
+            True,
+            marks=utils.skip_missing_dependency("glue.ligolw.lsctables"),
+        ),
+    ])
+    def test_to_ligolw_tables(self, instance, ilwdchar_compat):
+        if ilwdchar_compat is None:
+            ctx = pytest.warns(PendingDeprecationWarning)
+        else:
+            ctx = null_context()
+        with ctx:
+            tables = instance.to_ligolw_tables(
+                ilwdchar_compat=ilwdchar_compat,
+            )
+
+        if ilwdchar_compat is False:
+            mod = "ligo.lw.lsctables"
+        else:  # True or None
+            mod = "glue.ligolw.lsctables"
+        for tab in tables:
+            assert type(tab).__module__ == mod
+        assert len(tables[0]) == len(instance)  # segdef
+        assert len(tables[1]) == sum(len(x.known) for x in instance.values())
+        assert len(tables[2]) == sum(len(x.active) for x in instance.values())
+
     # -- test queries ---------------------------
 
-    @pytest.mark.parametrize('api', ('dqsegdb', 'segdb'))
-    def test_query(self, api):
-        if api == 'dqsegdb':
-            result = query_dqsegdb(self.TEST_CLASS.query, QUERY_FLAGS,
-                                   0, 10)
-            RESULT = QUERY_RESULTC
-        else:
-            result = query_segdb(self.TEST_CLASS.query, QUERY_FLAGS,
-                                 0, 10, url='https://geosegdb.does.not.exist')
-            RESULT = QUERY_RESULT
+    @mock.patch('gwpy.segments.flag.query_segments',
+                dqsegdb2_query_segments(QUERY_RESULT))
+    def test_query(self):
+        result = self.TEST_CLASS.query(QUERY_FLAGS, 0, 10)
+        RESULT = QUERY_RESULT.copy().coalesce()
 
         assert isinstance(result, self.TEST_CLASS)
         utils.assert_dict_equal(result, RESULT, utils.assert_flag_equal)
 
+    @mock.patch('gwpy.segments.flag.query_segments',
+                dqsegdb2_query_segments(QUERY_RESULT))
     def test_query_dqsegdb(self):
-        result = query_dqsegdb(self.TEST_CLASS.query_dqsegdb, QUERY_FLAGS,
-                               0, 10)
+        result = self.TEST_CLASS.query_dqsegdb(QUERY_FLAGS, 0, 10)
         RESULT = QUERY_RESULTC
         assert isinstance(result, self.TEST_CLASS)
         utils.assert_dict_equal(result, RESULT, utils.assert_flag_equal)
 
         # check all values of on_error
         with pytest.warns(UserWarning) as record:
-            result = query_dqsegdb(self.TEST_CLASS.query_dqsegdb,
-                                   QUERY_FLAGS + ['X1:BLAHBLAH:1'], 0, 10,
-                                   on_error='warn')
-            result = query_dqsegdb(self.TEST_CLASS.query_dqsegdb,
-                                   QUERY_FLAGS + ['X1:BLAHBLAH:1'], 0, 10,
-                                   on_error='ignore')
+            result = self.TEST_CLASS.query_dqsegdb(
+                QUERY_FLAGS + ['X1:BLAHBLAH:1'], 0, 10, on_error='warn')
+            result = self.TEST_CLASS.query_dqsegdb(
+                QUERY_FLAGS + ['X1:BLAHBLAH:1'], 0, 10, on_error='ignore')
         utils.assert_dict_equal(result, RESULT, utils.assert_flag_equal)
         assert len(record) == 1  # check on_error='ignore' didn't warn
         with pytest.raises(ValueError):
             self.TEST_CLASS.query_dqsegdb(QUERY_FLAGS, 0, 10, on_error='blah')
 
     def test_query_segdb(self):
-        result = query_segdb(self.TEST_CLASS.query_segdb, QUERY_FLAGS, 0, 10)
+        with pytest.deprecated_call():
+            result = query_segdb(self.TEST_CLASS.query_segdb,
+                                 QUERY_FLAGS, 0, 10)
         assert isinstance(result, self.TEST_CLASS)
         utils.assert_dict_equal(result, QUERY_RESULT, utils.assert_flag_equal)
 
-    @utils.skip_missing_dependency('lal')
-    @utils.skip_missing_dependency('dqsegdb')
     def test_populate(self):
         def fake():
             return self.TEST_CLASS({
@@ -828,8 +945,8 @@ class TestDataQualityDict(object):
         span = SegmentList([Segment(0, 2)])
 
         # and populate using a mocked query
-        with mock.patch('dqsegdb.apicalls.dqsegdbQueryTimes',
-                        mocks.dqsegdb_query_times(QUERY_RESULT)):
+        with mock.patch('gwpy.segments.flag.query_segments',
+                        dqsegdb2_query_segments(QUERY_RESULT)):
             vdf.populate()
             vdf2.populate()
             vdf3.populate(segments=span)

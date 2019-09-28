@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -23,6 +23,11 @@ import warnings
 from functools import wraps
 
 __author__ = 'Duncan Macleod <duncan.macleod@ligo.org>'
+
+DEPRECATED_FUNCTION_WARNING = (
+    "{0.__module__}.{0.__name__} has been deprecated, and will be "
+    "removed in a future release."
+)
 
 
 class deprecated_property(property):  # pylint: disable=invalid-name
@@ -54,3 +59,63 @@ class deprecated_property(property):  # pylint: disable=invalid-name
             fget = _warn(fget)
 
         super(deprecated_property, self).__init__(fget, fset, fdel, doc)
+
+
+def deprecated_function(func, warning=DEPRECATED_FUNCTION_WARNING):
+    """Adds a `DeprecationWarning` to a function
+
+    Parameters
+    ----------
+    func : `callable`
+        the function to decorate with a `DeprecationWarning`
+
+    warning : `str`, optional
+        the warning to present
+
+    Notes
+    -----
+    The final warning message is formatted as ``warning.format(func)``
+    so you can use attribute references to the function itself.
+    See the default message as an example.
+    """
+    @wraps(func)
+    def wrapped_func(*args, **kwargs):
+        warnings.warn(
+            DEPRECATED_FUNCTION_WARNING.format(func),
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        return func(*args, **kwargs)
+
+    return wrapped_func
+
+
+def return_as(returntype):
+    """Decorator to cast return of function as the given type
+
+    Parameters
+    ----------
+    returntype : `type`
+        the desired return type of the decorated function
+    """
+    def decorator(func):
+        # @wraps(func) <- we can't use this as normal because it doesn't work
+        #                 on python < 3 for instance methods,
+        #                 see workaround below
+        def wrapped(*args, **kwargs):
+            result = func(*args, **kwargs)
+            try:
+                return returntype(result)
+            except (TypeError, ValueError) as exc:
+                exc.args = (
+                    'failed to cast return from {0} as {1}: {2}'.format(
+                        func.__name__, returntype.__name__, str(exc)),
+                )
+                raise
+        try:
+            return wraps(func)(wrapped)
+        except AttributeError:  # python < 3.0.0
+            wrapped.__doc__ == func.__doc__
+            return wrapped
+
+    return decorator

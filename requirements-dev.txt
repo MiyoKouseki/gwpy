@@ -8,15 +8,14 @@
 -r requirements-doc.txt
 
 # extras
+lalsuite ; sys_platform != 'win32'
+git+https://github.com/duncanmmacleod/ligo.org.git
+lscsoft-glue ; sys_platform != 'win32'
+maya
+pandas
+psycopg2
+pycbc >= 1.13.4 ; python_version >= '3' and sys_platform != 'win32'
 pymysql
 pyRXP
-lscsoft-glue ; sys_platform != 'win32'
-lalsuite ; sys_platform != 'win32'
-dqsegdb
-gwdatafind
-pycbc >= 1.10.1 ; python_version == '2.7' and sys_platform != 'win32'
-git+https://github.com/duncanmmacleod/ligo.org.git
+python-ligo-lw >= 1.5.0 ; sys_platform != 'win32'
 sqlalchemy
-psycopg2
-pandas ; python_version != '3.4'
-pandas < 0.21 ; python_version == '3.4'

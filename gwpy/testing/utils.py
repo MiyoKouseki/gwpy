@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2014)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -22,6 +22,7 @@
 import os.path
 import tempfile
 from contextlib import contextmanager
+from distutils.version import LooseVersion
 from importlib import import_module
 
 from six import PY2
@@ -32,12 +33,11 @@ import pytest
 import numpy
 from numpy.testing import (assert_array_equal, assert_allclose)
 
-import pytest
-
 # -- useful constants ---------------------------------------------------------
 
 TEST_DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 TEST_GWF_FILE = os.path.join(TEST_DATA_DIR, 'HLV-HW100916-968654552-1.gwf')
+TEST_HDF5_FILE = os.path.join(TEST_DATA_DIR, 'HLV-HW100916-968654552-1.hdf')
 
 
 # -- dependencies -------------------------------------------------------------
@@ -64,7 +64,7 @@ def skip_missing_dependency(module):
 
 def module_older_than(module, minversion):
     mod = import_module(module)
-    return mod.__version__ < minversion
+    return LooseVersion(mod.__version__) < LooseVersion(minversion)
 
 
 def skip_minimum_version(module, minversion):

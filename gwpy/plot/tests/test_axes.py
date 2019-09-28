@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2018)
+# Copyright (C) Duncan Macleod (2018-2019)
 #
 # This file is part of GWpy.
 #
@@ -29,10 +29,9 @@ from matplotlib.lines import Line2D
 
 from ...time import LIGOTimeGPS
 from ...types import (Series, Array2D)
-from ...tests import utils
+from ...testing import utils
 from .. import Axes
-from .utils import (usetex,  # pylint: disable=unused-import
-                    AxesTestBase)
+from .utils import AxesTestBase
 
 numpy.random.seed(0)
 
@@ -42,13 +41,40 @@ class TestAxes(AxesTestBase):
 
     def test_plot(self, ax):
         series = Series(range(10), dx=.1)
-        line, = ax.plot(series, 'r--')
+        lines = ax.plot(
+            series,
+            series * 2, 'k--',
+            series.xindex, series, 'b-',
+            [1, 2, 3], [4, 5, 6],
+        )
 
+        # check line 1 maps the series with default params
+        line = lines[0]
         linex, liney = line.get_data()
         utils.assert_array_equal(linex, series.xindex.value)
         utils.assert_array_equal(liney, series.value)
-        assert line.get_color() == 'r'
+
+        # check line 2 maps 2*series with specific params
+        line = lines[1]
+        linex, liney = line.get_data()
+        utils.assert_array_equal(linex, series.xindex.value)
+        utils.assert_array_equal(liney, series.value * 2)
+        assert line.get_color() == 'k'
         assert line.get_linestyle() == '--'
+
+        # check line 3
+        line = lines[2]
+        linex, liney = line.get_data()
+        utils.assert_array_equal(linex, series.xindex.value)
+        utils.assert_array_equal(liney, series.value)
+        assert line.get_color() == 'b'
+        assert line.get_linestyle() == '-'
+
+        # check line 4
+        line = lines[3]
+        linex, liney = line.get_data()
+        utils.assert_array_equal(linex, [1, 2, 3])
+        utils.assert_array_equal(liney, [4, 5, 6])
 
     @pytest.mark.parametrize('c_sort', (False, True))
     def test_scatter(self, ax, c_sort):
@@ -68,19 +94,24 @@ class TestAxes(AxesTestBase):
         ax.scatter([1], [1], c=[1])
 
     def test_imshow(self, ax):
+        # standard imshow call
+        array = numpy.random.random((10, 10))
+        image2 = ax.imshow(array)
+        utils.assert_array_equal(image2.get_array(), array)
+        assert image2.get_extent() == (-.5, array.shape[0]-.5,
+                                       array.shape[1]-.5, -.5)
+
+    def test_imshow_array2d(self, ax):
         # overloaded imshow call (Array2D)
         array = Array2D(numpy.random.random((10, 10)), dx=.1, dy=.2)
         image = ax.imshow(array)
         utils.assert_array_equal(image.get_array(), array.value.T)
         assert image.get_extent() == tuple(array.xspan) + tuple(array.yspan)
 
-        # standard imshow call
-        image2 = ax.imshow(array.value)
-        utils.assert_array_equal(image2.get_array(), array.value)
-        assert image2.get_extent() == (-.5, array.shape[0]-.5,
-                                       -.5, array.shape[1]-.5)
-
-        # with log scale
+        # check log scale uses non-zero boundaries
+        ax.clear()
+        ax.set_xlim(.1, 1)
+        ax.set_ylim(.1, 1)
         ax.set_xscale('log')
         ax.set_yscale('log')
         image = ax.imshow(array)
@@ -89,10 +120,18 @@ class TestAxes(AxesTestBase):
 
     def test_pcolormesh(self, ax):
         array = Array2D(numpy.random.random((10, 10)), dx=.1, dy=.2)
+        ax.grid(True, which="both", axis="both")
         mesh = ax.pcolormesh(array)
         utils.assert_array_equal(mesh.get_array(), array.T.flatten())
         utils.assert_array_equal(mesh.get_paths()[-1].vertices[2],
                                  (array.xspan[1], array.yspan[1]))
+        # check that restore_grid decorator did its job
+        assert all((
+            ax.xaxis._gridOnMajor,
+            ax.xaxis._gridOnMinor,
+            ax.yaxis._gridOnMajor,
+            ax.yaxis._gridOnMinor,
+        ))
 
     def test_hist(self, ax):
         x = numpy.random.random(100) + 1
@@ -163,16 +202,34 @@ class TestAxes(AxesTestBase):
         else:
             cbar = ax.colorbar(vmin=2, vmax=4, **cb_kw)
         assert cbar.mappable is mesh
-        assert cbar.get_clim() == (2., 4.)
+        assert cbar.mappable.get_clim() == (2., 4.)
 
     def test_legend(self, ax):
         ax.plot(numpy.arange(5), label='test')
-        leg = ax.legend(alpha=.5, linewidth=10.)
+        leg = ax.legend()
         lframe = leg.get_frame()
-        assert lframe.get_alpha() == .5
-        assert lframe.get_linewidth() == rcParams['axes.linewidth']
+        assert lframe.get_linewidth() == rcParams['patch.linewidth']
         for line in leg.get_lines():
-            assert line.get_linewidth() == 10.
+            assert line.get_linewidth() == 6.
+
+    def test_legend_no_handler_map(self, ax):
+        ax.plot(numpy.arange(5), label='test')
+        leg = ax.legend(handler_map=None)
+        for line in leg.get_lines():
+            assert line.get_linewidth() == rcParams["lines.linewidth"]
+
+    def test_legend_deprecated_linewidth(self, ax):
+        ax.plot(numpy.arange(5), label='test')
+        with pytest.deprecated_call():
+            leg = ax.legend(linewidth=4)
+        assert leg.get_lines()[0].get_linewidth() == 4.
+
+    def test_legend_deprecated_alpha(self, ax):
+        ax.plot(numpy.arange(5), label='test')
+        with pytest.deprecated_call():
+            leg = ax.legend(alpha=.1)
+        if mpl_version >= "1.3.0":
+            assert leg.get_frame().get_alpha() == .1
 
     def test_plot_mmm(self, ax):
         mean_ = Series(numpy.random.random(10))

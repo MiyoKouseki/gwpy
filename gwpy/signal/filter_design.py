@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -21,7 +21,6 @@
 
 from __future__ import division
 import operator
-from functools import wraps
 from math import (pi, log10)
 
 from six.moves import reduce
@@ -243,7 +242,7 @@ def fir_from_transfer(transfer, ntaps, window='hanning', ncorner=None):
     If `ncorner` is not `None`, then `ncorner` extra samples will be zeroed
     on the left as a hard highpass filter.
 
-    See Also
+    See also
     --------
     scipy.signal.remez
         an alternative FIR filter design using the Remez exchange algorithm
@@ -587,7 +586,7 @@ def notch(frequency, sample_rate, type='iir', **kwargs):
     zpk : `tuple` of `complex` or `float`
        the filter components in digital zero-pole-gain format
 
-    See Also
+    See also
     --------
     scipy.signal.iirdesign
         for details on the IIR filter design method

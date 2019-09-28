@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -23,9 +23,10 @@ from six.moves.urllib.parse import urljoin
 
 import pytest
 
-from ...tests.utils import (TEST_GWF_FILE, skip_missing_dependency,
-                            TemporaryFilename)
+from ...testing.utils import (TEST_GWF_FILE, skip_missing_dependency,
+                              TemporaryFilename, assert_segmentlist_equal)
 from .. import gwf as io_gwf
+from ..cache import file_segment
 
 __author__ = 'Duncan Macleod <duncan.macleod@ligo.org>'
 
@@ -54,6 +55,19 @@ def test_open_gwf():
                           frameCPP.OFrameFStream)
     with pytest.raises(ValueError):
         io_gwf.open_gwf('test', mode='a')
+
+
+@skip_missing_dependency("LDAStools.frameCPP")
+def test_create_frvect(noisy_sinusoid):
+    vect = io_gwf.create_frvect(noisy_sinusoid)
+    assert vect.nData == noisy_sinusoid.size
+    assert vect.nBytes == noisy_sinusoid.nbytes
+    assert vect.name == noisy_sinusoid.name
+    assert vect.unitY == noisy_sinusoid.unit
+    xdim = vect.GetDim(0)
+    assert xdim.unitX == noisy_sinusoid.xunit
+    assert xdim.dx == noisy_sinusoid.dx.value
+    assert xdim.startX == noisy_sinusoid.x0.value
 
 
 @skip_missing_dependency('LDAStools.frameCPP')
@@ -89,3 +103,16 @@ def test_get_channel_type():
 def test_channel_in_frame():
     assert io_gwf.channel_in_frame('L1:LDAS-STRAIN', TEST_GWF_FILE) is True
     assert io_gwf.channel_in_frame('X1:NOT-IN_FRAME', TEST_GWF_FILE) is False
+
+
+@skip_missing_dependency("LDAStools.frameCPP")
+def test_data_segments():
+    assert_segmentlist_equal(
+        io_gwf.data_segments([TEST_GWF_FILE], "L1:LDAS-STRAIN"),
+        [file_segment(TEST_GWF_FILE)],
+    )
+    with pytest.warns(UserWarning):
+        assert_segmentlist_equal(
+            io_gwf.data_segments([TEST_GWF_FILE], "X1:BAD-NAME", warn=True),
+            [],
+        )

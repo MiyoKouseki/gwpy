@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2018)
+# Copyright (C) Duncan Macleod (2018-2019)
 #
 # This file is part of GWpy.
 #
@@ -25,7 +25,7 @@ import pytest
 
 import numpy
 
-from matplotlib import (__version__ as mpl_version, pyplot)
+from matplotlib import pyplot
 
 from astropy.units import Unit
 
@@ -74,7 +74,7 @@ class TestGPSMixin(object):
     ])
     def test_unit_error(self, badunit):
         with pytest.raises(ValueError):
-            mix = self.TYPE(unit=badunit)
+            self.TYPE(unit=badunit)
 
     @pytest.mark.parametrize('unit, name', [
         (None, None),
@@ -141,7 +141,9 @@ class TestInverseGpsTransform(TestGpsTransform):
 
 
 @pytest.mark.parametrize(
-    'scale', filter(lambda x: x != 'auto-gps', plot_gps.GPS_SCALES))
+    'scale',
+    sorted(filter(lambda x: x != 'auto-gps', plot_gps.GPS_SCALES)),
+)
 def test_gps_scale(scale):
     u = Unit(scale[:-1])
 
@@ -160,7 +162,7 @@ def test_gps_scale(scale):
 
 @pytest.mark.parametrize('scale, unit', [
     (1e-5, 'ms'),
-    (1e-4, 's' if mpl_version < '2.0' else 'ms'),
+    (1e-4, 'ms'),
     (1e-3, 's'),
     (1e-2, 's'),
     (1e-1, 's'),
@@ -181,3 +183,17 @@ def test_auto_gps_scale(scale, unit):
     transform = xscale.get_transform()
     assert transform.unit.name == unit
     pyplot.close(fig)
+
+
+def test_gps_formatting():
+    fig = pyplot.figure()
+    try:
+        ax = fig.gca()
+        ax.set_xscale('seconds', epoch=1238040211.67)
+        ax.set_xlim(1238040211.17, 1238040212.17)
+        fig.canvas.draw()
+        ticks = ["-0.5", "-0.4", "-0.3", "-0.2", "-0.1",
+                 "0", "0.1", "0.2", "0.3", "0.4", "0.5"]
+        assert [x.get_text() for x in ax.get_xticklabels()] == ticks
+    finally:
+        pyplot.close(fig)

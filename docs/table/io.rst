@@ -45,15 +45,17 @@ but is **not** backported to for use with :meth:`Table.read`.
 ``LIGO_LW`` XML
 ===============
 
-**Additional dependencies:** :mod:`glue.ligolw`
+**Additional dependencies:** |python-ligo-lw|_
 
 The LIGO Scientific Collaboration uses a custom scheme of XML in which to
 store tabular data, called ``LIGO_LW``.
-Complementing the scheme is a python library - :mod:`glue.ligolw` - which
+Complementing the scheme is a python library - |python-ligo-lw|_ - which
 allows users to read and write all of the different types of tabular data
 produced by gravitational-wave searches.
 
-Reading and writing tables in ``LIGO_LW`` XML format is supported with ``format='ligolw', tablename=<tablename>'`` where ``<tablename>`` can be any of the supported LSC table names (see :mod:`glue.ligolw.lsctables`).
+Reading and writing tables in ``LIGO_LW`` XML format is supported with
+``format='ligolw', tablename=<tablename>'`` where ``<tablename>`` can be
+any of the supported LSC table names (see :mod:`ligo.lw.lsctables`).
 
 Reading
 -------
@@ -151,6 +153,18 @@ To replace an existing table of the given type in an existing file, while preser
 
     >>> t.write('new-table.xml', format='ligolw', tablename='sngl_burst', append=True, overwrite=True)
 
+.. note::
+
+   The |python-ligo-lw| library reads and writes files using an updated
+   version of the ``LIGO_LW`` format compared to :mod:`glue.ligolw` used to.
+   GWpy should support both format versions natively when _reading_, but
+   when _writing_ you may need to explicitly pass the
+   ``ilwdchar_compat=True`` keyword in order to write using the old
+   format::
+
+       >>> t.write('new-table.xml', format='ligolw', tablename='sngl_burst',
+       ...         ilwdchar_compat=True)
+
 
 .. _gwpy-table-io-ascii-cwb:
 
@@ -158,7 +172,7 @@ To replace an existing table of the given type in an existing file, while preser
 Coherence WaveBurst ASCII (aka `EVENTS.txt`)
 ============================================
 
-The `Coherent WaveBurst <http://dx.doi.org/10.1088/0264-9381/25/11/114029>`_ analysis pipeline is used to detect generic gravitational-wave bursts, without using a signal model to restrict the analysis, and runs in both low-latency (online) and offline modes over current GWO data.
+The `Coherent WaveBurst <https://doi.org/10.1088/0264-9381/25/11/114029>`_ analysis pipeline is used to detect generic gravitational-wave bursts, without using a signal model to restrict the analysis, and runs in both low-latency (online) and offline modes over current GWO data.
 The analysis uses the ROOT framework for most data products, but also produces ASCII data in a custom format commonly written in a file called ``EVENTS.txt``.
 
 Reading

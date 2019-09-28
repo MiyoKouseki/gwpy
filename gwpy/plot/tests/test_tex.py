@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2018)
+# Copyright (C) Duncan Macleod (2018-2019)
 #
 # This file is part of GWpy.
 #
@@ -22,7 +22,7 @@
 import pytest
 
 from .. import tex as plot_tex
-from ...tests.mocks import mock
+from ...testing.compat import mock
 
 
 def which_patcher(error=False):

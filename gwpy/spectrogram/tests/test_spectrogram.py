@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -31,7 +31,7 @@ from matplotlib import rc_context
 
 from astropy import units
 
-from ...tests import utils
+from ...testing import utils
 from ...types.tests.test_array2d import TestArray2D as _TestArray2D
 from .. import Spectrogram
 
@@ -186,8 +186,9 @@ class TestSpectrogram(_TestArray2D):
         utils.test_read_write(array, 'hdf5', write_kw={'overwrite': True})
 
     def test_percentile(self):
-        array = self.create(name='Test')
+        array = self.create(name='Test', unit='m')
         a2 = array.percentile(50)
         utils.assert_quantity_sub_equal(array.median(axis=0), a2,
                                         exclude=('name',))
         assert a2.name == 'Test: 50th percentile'
+        assert a2.unit == array.unit

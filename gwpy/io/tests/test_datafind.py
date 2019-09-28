@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -26,13 +26,14 @@ from io import BytesIO
 from itertools import cycle
 
 import six
-from six.moves.http_client import HTTPConnection
+from six.moves.http_client import (HTTPConnection, HTTPException)
 
 import pytest
 
-from ...tests.utils import (skip_missing_dependency, TEST_DATA_DIR,
-                            TemporaryFilename)
-from ...tests.mocks import mock
+import gwdatafind
+
+from ...testing.compat import mock
+from ...testing.utils import (TEST_GWF_FILE, TemporaryFilename)
 from .. import datafind as io_datafind
 
 __author__ = 'Duncan Macleod <duncan.macleod@ligo.org>'
@@ -41,8 +42,6 @@ if six.PY2:
     OPEN = '__builtin__.open'
 else:
     OPEN = 'builtins.open'
-
-TEST_GWF_FILE = os.path.join(TEST_DATA_DIR, 'HLV-HW100916-968654552-1.gwf')
 
 # -- mock the environment -----------------------------------------------------
 
@@ -67,7 +66,6 @@ def teardown_module():
 # -- utilities ----------------------------------------------------------------
 
 def mock_connection(framefile):
-    import gwdatafind
     # create mock up of connection object
     conn = mock.create_autospec(gwdatafind.http.HTTPConnection)
     conn.find_types.return_value = [os.path.basename(framefile).split('-')[1]]
@@ -222,6 +220,31 @@ class TestFflConnection(object):
 
 # -- tests --------------------------------------------------------------------
 
+@mock.patch("gwdatafind.ui.connect", return_value="connection")
+def test_with_connection(connect):
+    func = mock.MagicMock()
+    # https://stackoverflow.com/questions/22204660/python-mock-wrapsf-problems
+    func.__name__ = "func"
+    wrapped_func = io_datafind.with_connection(func)
+
+    wrapped_func(1, host="host")
+    assert func.called_with(1, connection="connection")
+    assert connect.called_with(host="host")
+
+
+@mock.patch("gwdatafind.ui.connect", return_value="connection")
+@mock.patch("gwpy.io.datafind.reconnect", lambda x: x)
+def test_with_connection_reconnect(connect):
+    func = mock.MagicMock()
+    # https://stackoverflow.com/questions/22204660/python-mock-wrapsf-problems
+    func.__name__ = "func"
+    func.side_effect = [HTTPException, "return"]
+    wrapped_func = io_datafind.with_connection(func)
+
+    assert wrapped_func(1, host="host") == "return"
+    assert func.call_count == 2
+
+
 def test_reconnect():
     a = HTTPConnection('127.0.0.1')
     b = io_datafind.reconnect(a)
@@ -236,7 +259,6 @@ def test_reconnect():
         assert b.ffldir == a.ffldir
 
 
-@skip_missing_dependency('gwdatafind')
 @mock.patch('gwpy.io.datafind.iter_channel_names',
             return_value=['L1:LDAS-STRAIN', 'H1:LDAS-STRAIN'])
 @mock.patch('gwpy.io.datafind.num_channels', return_value=1)
@@ -283,7 +305,6 @@ def test_find_frametype(reconnect, num_channels, iter_channels, connection):
         assert '[files on tape have not been checked' in str(exc.value)
 
 
-@skip_missing_dependency('gwdatafind')
 @mock.patch('gwpy.io.datafind.iter_channel_names',
             return_value=['L1:LDAS-STRAIN'])
 @mock.patch('gwpy.io.datafind.num_channels', return_value=1)
@@ -292,6 +313,25 @@ def test_find_best_frametype(reconnect, num_channels, iter_channels,
                              connection):
     assert io_datafind.find_best_frametype(
         'L1:LDAS-STRAIN', 968654552, 968654553) == 'HW100916'
+
+
+def test_find_types(connection):
+    types = ["a", "b", "c"]
+    connection.find_types.return_value = types
+    assert io_datafind.find_types(
+        "X",
+        connection=connection,
+    ) == types
+
+
+def test_find_types_priority(connection):
+    types = ["L1_R", "L1_T", "L1_M"]
+    connection.find_types.return_value = types
+    assert io_datafind.find_types(
+        "X",
+        trend="m-trend",
+        connection=connection,
+    ) == ["L1_M", "L1_R", "L1_T"]
 
 
 def test_on_tape():

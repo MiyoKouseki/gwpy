@@ -1,7 +1,5 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
-# Copyright (C) Joseph Areeda (2015)
+# Copyright (C) Joseph Areeda (2015-2019)
 #
 # This file is part of GWpy.
 #
@@ -17,7 +15,6 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with GWpy.  If not, see <http://www.gnu.org/licenses/>.
-#
 
 """Base class for CLI (`gwpy-plot`) products.
 """
@@ -29,7 +26,6 @@ import re
 import time
 import warnings
 import sys
-from collections import OrderedDict
 from functools import wraps
 
 from six import add_metaclass
@@ -43,6 +39,7 @@ except ImportError:
 from astropy.time import Time
 from astropy.units import Quantity
 
+from ..utils import unique
 from ..signal import filter_design
 from ..signal.window import recommended_overlap
 from ..time import to_gps
@@ -92,17 +89,6 @@ def to_float(unit):
 
 to_hz = to_float('Hz')  # pylint: disable=invalid-name
 to_s = to_float('s')  # pylint: disable=invalid-name
-
-
-def unique(list_):
-    """Returns a unique version of the input list preserving order
-
-    Examples
-    --------
-    >>> unique(['b', 'c', 'a', 'a', 'd', 'e', 'd', 'a'])
-    ['b', 'c', 'a', 'd', 'e']
-    """
-    return list(OrderedDict.fromkeys(list_).keys())
 
 
 # -- base product class -------------------------------------------------------
@@ -339,15 +325,16 @@ class CliProduct(object):
         group.add_argument('--interactive', action='store_true',
                            help='when running from ipython '
                                 'allows experimentation')
-        group.add_argument('--title', action='append',
-                           help='One or more title lines')
+        group.add_argument('--title', action='store',
+                           help='Set title (below suptitle, defaults to '
+                                'parameter summary')
         group.add_argument('--suptitle',
                            help='1st title line (larger than the others)')
         group.add_argument('--out', default='gwpy.png',
                            help='output filename')
 
         # legends match input files in position are displayed if specified.
-        group.add_argument('--legend', nargs='*', action='append',
+        group.add_argument('--legend', nargs='+', action='append', default=[],
                            help='strings to match data files')
         group.add_argument('--nolegend', action='store_true',
                            help='do not display legend')
@@ -639,7 +626,7 @@ class CliProduct(object):
         """Create a legend for this product (if applicable)
         """
         leg = self.ax.legend(prop={'size': 10})
-        if self.n_datasets == 1 and leg:
+        if leg and self.n_datasets == 1:
             try:
                 leg.remove()
             except NotImplementedError:
@@ -647,18 +634,22 @@ class CliProduct(object):
         return leg
 
     def set_title(self, title):
-        """Set the title for this plot.
+        """Set the title(s) for this plot.
 
         The `Axes.title` actually serves at the sub-title for the plot,
         typically giving processing parameters and information.
         """
+
         if title is None:
-            title = self.get_title().rstrip(', ')
+            title_line = self.get_title().rstrip(', ')
+        else:
+            title_line = title
+
         if self.usetex:
-            title = label_to_latex(title)
-        if title:
-            self.ax.set_title(title, fontsize=12)
-            self.log(3, ('Title is: %s' % title))
+            title_line = label_to_latex(title_line)
+        if title_line:
+            self.ax.set_title(title_line, fontsize=12)
+            self.log(3, ('Title is: %s' % title_line))
 
     def set_suptitle(self, suptitle):
         """Set the super title for this plot.
@@ -900,7 +891,7 @@ class TimeDomainProduct(CliProduct):
         if args.epoch is None:
             args.epoch = args.xmin
         elif (args.epoch < 1e8):
-                args.epoch += min(starts)
+            args.epoch += min(starts)
 
         if args.xmax is None:
             args.xmax = max(starts) + args.duration

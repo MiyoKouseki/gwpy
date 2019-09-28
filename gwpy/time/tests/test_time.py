@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) Duncan Macleod (2013)
+# Copyright (C) Duncan Macleod (2014-2019)
 #
 # This file is part of GWpy.
 #
@@ -33,6 +33,7 @@ from astropy.time import Time
 from astropy.units import (UnitConversionError, Quantity)
 
 from ... import time
+from ...testing.utils import skip_missing_dependency
 from .. import LIGOTimeGPS
 
 try:
@@ -44,8 +45,6 @@ else:
     HAS_GLUE = True
 
 __author__ = 'Duncan Macleod <duncan.macleod@ligo.org>'
-
-skipglue = pytest.mark.skipif(not HAS_GLUE, reason='no module named glue')
 
 GW150914 = LIGOTimeGPS(1126259462, 391000000)
 GW150914_DT = datetime(2015, 9, 14, 9, 50, 45, 391000)
@@ -77,6 +76,7 @@ def _test_with_errors(func, in_, out):
 
 @pytest.mark.parametrize('in_, out', [
     (1126259462, int(GW150914)),
+    (1235635623.7500002, LIGOTimeGPS(1235635623, 750000200)),
     (LIGOTimeGPS(1126259462, 391000000), GW150914),
     ('0', 0),
     ('Jan 1 2017', 1167264018),
@@ -88,7 +88,7 @@ def _test_with_errors(func, in_, out):
     (Quantity(1167264018, 's'), 1167264018),
     (Decimal('1126259462.391000000'), GW150914),
     pytest.param(GlueGPS(GW150914.gpsSeconds, GW150914.gpsNanoSeconds),
-                 GW150914, marks=skipglue),
+                 GW150914, marks=skip_missing_dependency('glue')),
     (numpy.int32(NOW), NOW),  # fails with lal-6.18.0
     ('now', NOW),
     ('today', TODAY),
@@ -96,6 +96,8 @@ def _test_with_errors(func, in_, out):
     ('yesterday', YESTERDAY),
     (Quantity(1, 'm'), UnitConversionError),
     ('random string', (ValueError, TypeError)),
+    pytest.param('Oct 30 2016 12:34 CST', 1161887657,
+                 marks=skip_missing_dependency('maya')),
 ])
 def test_to_gps(in_, out):
     """Test :func:`gwpy.time.to_gps`
@@ -109,8 +111,9 @@ def test_to_gps(in_, out):
     (1126259462.391, datetime(2015, 9, 14, 9, 50, 45, 391000)),
     ('1.13e9', datetime(2015, 10, 27, 16, 53, 3)),
     pytest.param(GlueGPS(GW150914.gpsSeconds, GW150914.gpsNanoSeconds),
-                 GW150914_DT, marks=skipglue),
+                 GW150914_DT, marks=skip_missing_dependency('glue')),
     ('test', ValueError),
+    (1167264017, ValueError),  # gwpy/gwpy#1021
 ])
 def test_from_gps(in_, out):
     """Test :func:`gwpy.time.from_gps`
@@ -122,7 +125,8 @@ def test_from_gps(in_, out):
     (float(GW150914), GW150914_DT),
     (GW150914, GW150914_DT),
     (GW150914_DT, GW150914),
-    pytest.param(GlueGPS(float(GW150914)), GW150914_DT, marks=skipglue),
+    pytest.param(GlueGPS(float(GW150914)), GW150914_DT,
+                 marks=skip_missing_dependency('glue')),
     ('now', NOW),
     ('today', TODAY),
     ('tomorrow', TOMORROW),
