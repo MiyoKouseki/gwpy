@@ -121,11 +121,13 @@ class Axes(_Axes):
             if ax.get_scale() in GPS_SCALES and ax.isDefault_label:
                 labels[ax] = ax.get_label_text()
                 trans = ax.get_transform()
+                print(trans)
+                print(ax.get_scale())
                 epoch = float(trans.get_epoch())
                 unit = trans.get_unit_name()
                 iso = Time(epoch, format='gps', scale='utc').iso
                 utc = iso.rstrip('0').rstrip('.')
-                ax.set_label_text('Time [{0!s}] from {1!s} UTC ({2!r})'.format(
+                ax.set_label_text('Time [{0!s}] From {1!s} UTC ({2!r})'.format(
                     unit, utc, epoch))
 
         try:

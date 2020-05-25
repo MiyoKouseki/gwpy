@@ -103,6 +103,7 @@ class Plot(figure.Figure):
                 kwargs.get('xscale') in GPS_SCALES):
             kwargs.setdefault('figsize', (12, 6))
             kwargs.setdefault('xscale', 'auto-gps')
+            #kwargs.setdefault('xscale', 'days')
 
         # initialise figure
         figure_kw = {key: kwargs.pop(key) for key in utils.FIGURE_PARAMS if

@@ -118,6 +118,9 @@ class GPSMixin(object):
         """Set the GPS step scale
         """
         # accept all core time units
+        #unit = units.day # !!!!!!!!!!!!remove me !!!!!!!!!!!!!!!!!!1
+        #unit = units.minute # !!!!!!!!!!!!remove me !!!!!!!!!!!!!!!!!!1
+        
         if unit is None or (isinstance(unit, units.NamedUnit) and
                             unit.physical_type == 'time'):
             self._unit = unit
@@ -457,6 +460,7 @@ class GPSScale(GPSMixin, LinearScale):
         # get current settings
         epoch = self.get_epoch()
         unit = self.get_unit()
+
 
         # dynamically set epoch and/or unit if None
         if unit is None:

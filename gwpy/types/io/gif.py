@@ -34,17 +34,20 @@ __author__ = "Duncan Macleod <duncan.macleod@ligo.org>"
 
 # --
 from astropy.time import Time
-from datetime import datetime as dt
+from datetime import datetime,timedelta
 def fname2gps(fname):
+    '''
+    '''
     datetime_str = fname.split('.')[0].split('/')[-1]
-    time = dt.strptime(datetime_str, '%y%m%d%H%M')
-    gps = Time(time).gps - 3600*9
+    time = datetime.strptime(datetime_str, '%y%m%d%H%M') # JST
+    time = time - timedelta(hours=9) # JST -> UTC
+    gps = Time(time,scale='utc').gps # UTC->GPS
     return gps
 
-def gps2datestr(gps):
-    utc = Time(gps, format='gps').to_datetime()
-    date_str = utc.strftime('%Y%m%d%H%M')
-    return date_str
+# def gps2datestr(gps):
+#     utc = Time(gps, format='gps').to_datetime()
+#     date_str = utc.strftime('%Y%m%d%H%M')
+#     return date_str
 
 # -- read ---------------------------------------------------------------------
 
@@ -60,11 +63,11 @@ def read_gif_series(input_, array_type=Series, **kwargs):
         desired return type
     
     """
-    chname = kwargs.pop('name',None)    
+    chname = kwargs.pop('name',None)
     yarr = GifData.fromfile(input_, chname)
     fs = GifData(chname).fs
     x0 = fname2gps(input_)
-    arr = array_type(yarr,  x0=x0, dx=1./fs)
+    arr = array_type(yarr,  x0=x0, dx=1./fs, name=chname)
     return arr
 
 # -- write --------------------------------------------------------------------
