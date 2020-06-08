@@ -424,9 +424,9 @@ class Array(Quantity):
         return self._wrap_function(numpy.median, axis, **kwargs)
     median.__doc__ = numpy.median.__doc__
 
-    def nanmedian(self, axis=None, **kwargs):
-        return self._wrap_function(numpy.nanmedian, axis, **kwargs)
-    nanmedian.__doc__ = numpy.nanmedian.__doc__
+    # def nanmedian(self, axis=None, **kwargs):
+    #     return self._wrap_function(numpy.nanmedian, axis, **kwargs)
+    # nanmedian.__doc__ = numpy.nanmedian.__doc__
     
     
     def _to_own_unit(self, value, check_precision=True):
