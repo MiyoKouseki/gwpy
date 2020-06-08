@@ -186,7 +186,7 @@ class TestArray2D(_TestSeries):
             exclude=['epoch'])
 
     def test_is_compatible(self, array):
-        super(TestArray2D, self).test_is_compatible(array)
+        super().test_is_compatible(array)
 
         a2 = self.create(dy=2)
         with pytest.raises(ValueError):
@@ -204,5 +204,14 @@ class TestArray2D(_TestSeries):
         with pytest.raises(IndexError):
             array.value_at(1.6, 4.8)
 
+    @pytest.mark.skip("not implemented for >1D arrays")
     def test_pad(self):
+        return NotImplemented
+
+    @pytest.mark.skip("not implemented for >1D arrays")
+    def test_pad_index(self):
+        return NotImplemented
+
+    @pytest.mark.skip("not implemented for >1D arrays")
+    def test_pad_asymmetric(self):
         return NotImplemented

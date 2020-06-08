@@ -81,35 +81,48 @@ def read_multi(flatten, cls, source, *args, **kwargs):
     # calculate maximum number of processes
     nproc = min(kwargs.pop('nproc', 1), len(files))
 
-    # define multiprocessing method
-    def _read_single_file(fobj):
-        try:
-            return fobj, io_read(cls, fobj, *args, **kwargs)
-        # pylint: disable=broad-except,redefine-in-handler
-        except Exception as exc:
-            if nproc == 1:
-                raise
-            if isinstance(exc, SAXException):  # SAXExceptions don't pickle
-                return fobj, exc.getException()  # pylint: disable=no-member
-            return fobj, exc
-
     # format verbosity
     if verbose is True:
         verbose = 'Reading ({})'.format(kwargs['format'])
 
+    # bundle inputs
+    inputs = [(f, cls, nproc, args, kwargs) for f in files]
+
     # read files
     output = mp_utils.multiprocess_with_queues(
-        nproc, _read_single_file, files, verbose=verbose, unit='files')
-    
+        nproc, _read_single_file, inputs, verbose=verbose, unit='files')
+
     # raise exceptions (from multiprocessing, single process raises inline)
     for fobj, exc in output:
         if isinstance(exc, Exception):
             exc.args = ('Failed to read %s: %s' % (fobj, str(exc)),)
             raise exc
-        
+
     # return combined object
-    if not output:
-        raise ValueError('No data found.. Please check source files.')
-        
     _, out = zip(*output)
     return flatten(out)
+
+
+def _read_single_file(bundle):
+    """Reads a single file and returns the output
+
+    This is designed only to be passed to
+    :func:`gwpy.utils.mp.multiprocess_with_queues`
+
+    Returns
+    -------
+    f, output :
+        the input file (object) that was (attempted to be) read, and
+        the result of the read operation, which may be an exception
+        object.
+    """
+    fobj, cls, nproc, args, kwargs = bundle
+    try:
+        return fobj, io_read(cls, fobj, *args, **kwargs)
+    # pylint: disable=broad-except,redefine-in-handler
+    except Exception as exc:
+        if nproc == 1:
+            raise
+        if isinstance(exc, SAXException):  # SAXExceptions don't pickle
+            return fobj, exc.getException()  # pylint: disable=no-member
+        return fobj, exc

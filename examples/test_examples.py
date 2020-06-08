@@ -21,7 +21,6 @@
 
 import os
 import re
-import sys
 import warnings
 from contextlib import contextmanager
 from pathlib import Path
@@ -34,11 +33,7 @@ from gwpy.io.nds2 import NDSWarning
 
 __author__ = "Duncan Macleod <duncan.macleod@ligo.org>"
 
-if sys.version_info < (3, 6):  # python < 3.6
-    pytest.skip('example tests will only run on python >= 3.6',
-                allow_module_level=True)
 pytest.importorskip("matplotlib", minversion="2.2.0")
-pytest.importorskip("astropy", minversion="2.0.0")
 
 use('agg')  # force non-interactive backend
 
@@ -60,11 +55,11 @@ EXAMPLES = sorted([
 @contextmanager
 def cwd(path):
     oldpwd = Path.cwd()
-    os.chdir(path)
+    os.chdir(str(path))
     try:
         yield
     finally:
-        os.chdir(oldpwd)
+        os.chdir(str(oldpwd))
 
 
 @pytest.fixture(autouse=True)
@@ -85,17 +80,17 @@ def test_example(script):
     with cwd(script.parent):
         with script.open('r') as example:
             raw = example.read()
-        if not isinstance(raw, bytes):  # python < 3
-            raw = raw.encode('utf-8')
         code = compile(raw, str(script), "exec")
         try:
             exec(code, globals())
-        except NDSWarning as exc:  # if we can't authenticate, dont worry
+        except NDSWarning as exc:  # pragma: no-cover
+            # if we can't authenticate, dont worry
             for msg in NDS2_AUTH_FAILURES:
                 if msg.match(str(exc)):
                     pytest.skip(str(exc))
             raise
-        except ImportError as exc:  # needs an optional dependency
+        except ImportError as exc:  # pragma: no-cover
+            # needs an optional dependency
             if "gwpy" in str(exc):
                 raise
             pytest.skip(str(exc))

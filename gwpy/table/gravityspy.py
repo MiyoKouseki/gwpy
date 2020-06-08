@@ -19,9 +19,18 @@
 """Extend :mod:`astropy.table` with the `GravitySpyTable`
 """
 
+import json
+import os
+from urllib.error import HTTPError
+from urllib.parse import urlencode
+from urllib.request import urlopen
+
+import numpy as np
+
+from astropy.utils.data import get_readable_fileobj
+
 from ..utils import mp as mp_utils
 from .table import EventTable
-import numpy as np
 
 __author__ = 'Scott Coughlin <scott.coughlin@ligo.org>'
 __all__ = ['GravitySpyTable']
@@ -68,8 +77,6 @@ class GravitySpyTable(EventTable):
         -------
         Folder containing omega scans sorted by label
         """
-        from six.moves.urllib.request import urlopen
-        import os
         # back to pandas
         try:
             images_db = self.to_pandas()
@@ -138,7 +145,7 @@ class GravitySpyTable(EventTable):
                                                  ilabel))
 
         images_for_download = images_db[cols_for_download]
-        images = images_for_download.as_matrix().flatten()
+        images = images_for_download.values.flatten()
         images_for_download_ext = images_db[cols_for_download_ext]
         duration = np.atleast_2d(
                                  duration_values.repeat(
@@ -152,28 +159,15 @@ class GravitySpyTable(EventTable):
                            images_for_download_ext, duration,
                            images_for_for_download_path))
 
-        def get_image(url):
-            name = url[3] + '_' + url[4] + '_spectrogram_' + url[5] + '.png'
-            outfile = os.path.join(url[6], url[1], url[2], name)
-            with open(outfile, 'wb') as fout:
-                fout.write(urlopen(url[0]).read())
-
         # calculate maximum number of processes
         nproc = min(kwargs.pop('nproc', 1), len(images))
 
-        # define multiprocessing method
-        def _download_single_image(url):
-            try:
-                return url, get_image(url)
-            except Exception as exc:  # pylint: disable=broad-except
-                if nproc == 1:
-                    raise
-                else:
-                    return url, exc
-
         # read files
         output = mp_utils.multiprocess_with_queues(
-            nproc, _download_single_image, images)
+            nproc,
+            _download_single_image,
+            [(img, nproc) for img in images],
+        )
 
         # raise exceptions (from multiprocessing, single process raises inline)
         for f, x in output:
@@ -202,17 +196,12 @@ class GravitySpyTable(EventTable):
         an evaluation of the Euclidean distance of the input image
         to all other images in some Feature Space
         """
-        from astropy.utils.data import get_readable_fileobj
-        import json
-        from six.moves.urllib.error import HTTPError
-        from six.moves import urllib
-
         # Need to build the url call for the restful API
         base = 'https://gravityspytools.ciera.northwestern.edu' + \
             '/search/similarity_search_restful_API'
 
         map_era_to_url = {
-            'ALL': "event_time BETWEEN 1126400000 AND 1229176818",
+            'ALL': "event_time BETWEEN 1126400000 AND 1584057618",
             'O1': "event_time BETWEEN 1126400000 AND 1137250000",
             'ER10': "event_time BETWEEN 1161907217 AND 1164499217",
             'O2a': "event_time BETWEEN 1164499217 AND 1219276818",
@@ -226,10 +215,10 @@ class GravitySpyTable(EventTable):
             'ifo': "{}".format(", ".join(
                 map(repr, [ifos[i:i+2] for i in range(0, len(ifos), 2)]),
              )),
-            'database': 'updated_similarity_index_v2d0',
+            'database': 'similarity_index_o3',
         }
 
-        search = urllib.parse.urlencode(parts)
+        search = urlencode(parts)
 
         url = '{}/?{}'.format(base, search)
 
@@ -240,3 +229,21 @@ class GravitySpyTable(EventTable):
             if exc.code == 500:
                 exc.msg += ', confirm the gravityspy_id is valid'
                 raise
+
+
+def _get_image(url):
+    name = "{0[3]}_{0[4]}_spectrogram_{0[5]}.png".format(url)
+    outfile = os.path.join(url[6], url[1], url[2], name)
+    with open(outfile, 'wb') as fout:
+        fout.write(urlopen(url[0]).read())
+
+
+def _download_single_image(bundle):
+    url, nproc = bundle
+    try:
+        return url, _get_image(url)
+    except Exception as exc:  # pylint: disable=broad-except
+        if nproc == 1:
+            raise
+        else:
+            return url, exc

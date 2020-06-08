@@ -23,17 +23,13 @@ pipeline, all credits for the original algorithm go to its
 authors.
 """
 
-from __future__ import division
-
 import warnings
 from math import (log, ceil, pi, isinf, exp)
-
-from six import string_types
-from six.moves import xrange
 
 import numpy
 from numpy import fft as npfft
 
+from ..utils import round_to_power
 from ..segments import Segment
 
 __author__ = 'Duncan Macleod <duncan.macleod@ligo.org>'
@@ -77,7 +73,7 @@ class QBase(QObject):
     This class just provides a property for Q-prime = Q / sqrt(11)
     """
     def __init__(self, q, duration, sampling, mismatch=DEFAULT_MISMATCH):
-        super(QBase, self).__init__(duration, sampling, mismatch=mismatch)
+        super().__init__(duration, sampling, mismatch=mismatch)
         self.q = float(q)
 
     @property
@@ -114,7 +110,7 @@ class QTiling(QObject):
                  qrange=DEFAULT_QRANGE,
                  frange=DEFAULT_FRANGE,
                  mismatch=DEFAULT_MISMATCH):
-        super(QTiling, self).__init__(duration, sampling, mismatch=mismatch)
+        super().__init__(duration, sampling, mismatch=mismatch)
         self.qrange = (float(qrange[0]), float(qrange[1]))
         self.frange = [float(frange[0]), float(frange[1])]
 
@@ -151,7 +147,7 @@ class QTiling(QObject):
         cumum = log(self.qrange[1] / self.qrange[0]) / 2**(1/2.)
         nplanes = int(max(ceil(cumum / self.deltam), 1))
         dq = cumum / nplanes  # pylint: disable=invalid-name
-        for i in xrange(nplanes):
+        for i in range(nplanes):
             yield self.qrange[0] * exp(2**(1/2.) * dq * (i + .5))
 
     def __iter__(self):
@@ -229,7 +225,7 @@ class QPlane(QBase):
     """
     def __init__(self, q, frange, duration, sampling,
                  mismatch=DEFAULT_MISMATCH):
-        super(QPlane, self).__init__(q, duration, sampling, mismatch=mismatch)
+        super().__init__(q, duration, sampling, mismatch=mismatch)
         self.frange = [float(frange[0]), float(frange[1])]
 
         if self.frange[0] == 0:  # set non-zero lower frequency
@@ -258,7 +254,7 @@ class QPlane(QBase):
         fstepmin = 1 / self.duration
         # for each frequency, yield a QTile
         last = None
-        for i in xrange(nfreq):
+        for i in range(nfreq):
             this = (
                 minf * exp(2 / (2 + self.q**2)**(1/2.) * (i + .5) * fstep) //
                 fstepmin * fstepmin
@@ -288,7 +284,8 @@ class QPlane(QBase):
     def whitening_duration(self):
         """The recommended data duration required for whitening
         """
-        return 2 ** (round(log(self.q / (2 * self.frange[0]), 2)))
+        return round_to_power(self.q / (2 * self.frange[0]),
+                              base=2, which=None)
 
     def transform(self, fseries, norm=True, epoch=None, search=None):
         """Calculate the energy `TimeSeries` for the given `fseries`
@@ -336,7 +333,7 @@ class QTile(QBase):
     """
     def __init__(self, q, frequency, duration, sampling,
                  mismatch=DEFAULT_MISMATCH):
-        super(QTile, self).__init__(q, duration, sampling, mismatch=mismatch)
+        super().__init__(q, duration, sampling, mismatch=mismatch)
         self.frequency = frequency
 
     @property
@@ -354,7 +351,8 @@ class QTile(QBase):
         :type: `int`
         """
         tcum_mismatch = self.duration * 2 * pi * self.frequency / self.q
-        return next_power_of_two(tcum_mismatch / self.deltam)
+        return round_to_power(tcum_mismatch / self.deltam,
+                              base=2, which='upper')
 
     @property
     def windowsize(self):
@@ -440,7 +438,7 @@ class QTile(QBase):
             x0=cenergy.x0, dx=cenergy.dx, copy=False)
 
         if norm:
-            norm = norm.lower() if isinstance(norm, string_types) else norm
+            norm = norm.lower() if isinstance(norm, str) else norm
             if norm in (True, 'median'):
                 narray = energy / energy.median()
             elif norm in ('mean',):
@@ -576,11 +574,11 @@ class QGram(object):
         else:
             if fres == "<default>":
                 fres = 500
-            # using `~numpy.logspace` here to support numpy-1.7.1 for EPEL7,
-            # but numpy-1.12.0 introduced the function `~numpy.geomspace`
-            logfmin = numpy.log10(self.plane.frange[0])
-            logfmax = numpy.log10(self.plane.frange[1])
-            outfreq = numpy.logspace(logfmin, logfmax, num=int(fres))
+            outfreq = numpy.geomspace(
+                self.plane.frange[0],
+                self.plane.frange[1],
+                num=int(fres),
+            )
         new = type(out)(
             interp(xout, outfreq).T.astype(
                 dtype, casting="same_kind", copy=False),
@@ -632,12 +630,6 @@ class QGram(object):
 
 
 # -- utilities ----------------------------------------------------------------
-
-def next_power_of_two(x):
-    """Return the smallest power of two greater than or equal to `x`
-    """
-    return 2**(ceil(log(x, 2)))
-
 
 def q_scan(data, mismatch=DEFAULT_MISMATCH, qrange=DEFAULT_QRANGE,
            frange=DEFAULT_FRANGE, duration=None, sampling=None,

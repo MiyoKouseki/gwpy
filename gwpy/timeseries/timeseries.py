@@ -19,11 +19,8 @@
 """Array with metadata
 """
 
-from __future__ import (division, print_function)
-
+import math
 import warnings
-
-from six.moves import range
 
 import numpy
 from numpy import fft as npfft
@@ -325,8 +322,8 @@ class TimeSeries(TimeSeriesBase):
 
         Returns
         -------
-        psd :  `~gwpy.frequencyseries.FrequencySeries`
-            a data series containing the PSD.
+        asd :  `~gwpy.frequencyseries.FrequencySeries`
+            a data series containing the ASD
 
         See also
         --------
@@ -493,9 +490,13 @@ class TimeSeries(TimeSeriesBase):
         # set kwargs for periodogram()
         kwargs.setdefault('fs', self.sample_rate.to('Hz').value)
         # run
-        return spectral.spectrogram(self, signal.periodogram,
-                                    fftlength=fftlength, overlap=overlap,
-                                    window=window, **kwargs)
+        return spectral.spectrogram(
+            self,
+            fftlength=fftlength,
+            overlap=overlap,
+            window=window,
+            **kwargs
+        )
 
     def fftgram(self, fftlength, overlap=None, window='hann', **kwargs):
         """Calculate the Fourier-gram of this `TimeSeries`.
@@ -521,11 +522,7 @@ class TimeSeries(TimeSeriesBase):
             a Fourier-gram
         """
         from ..spectrogram import Spectrogram
-        try:
-            from scipy.signal import spectrogram
-        except ImportError:
-            raise ImportError("Must have scipy>=0.16 to utilize "
-                              "this method.")
+        from scipy.signal import spectrogram
 
         # format lengths
         if isinstance(fftlength, units.Quantity):
@@ -787,12 +784,6 @@ class TimeSeries(TimeSeriesBase):
             for details on the filter design
         TimeSeries.filter
             for details on how the filter is applied
-
-        Notes
-        -----
-        When using `scipy < 0.16.0` some higher-order filters may be
-        unstable. With `scipy >= 0.16.0` higher-order filters are
-        decomposed into second-order-sections, and so are much more stable.
         """
         # design filter
         filt = filter_design.highpass(frequency, self.sample_rate,
@@ -837,12 +828,6 @@ class TimeSeries(TimeSeriesBase):
             for details on the filter design
         TimeSeries.filter
             for details on how the filter is applied
-
-        Notes
-        -----
-        When using `scipy < 0.16.0` some higher-order filters may be
-        unstable. With `scipy >= 0.16.0` higher-order filters are
-        decomposed into second-order-sections, and so are much more stable.
         """
         # design filter
         filt = filter_design.lowpass(frequency, self.sample_rate,
@@ -890,12 +875,6 @@ class TimeSeries(TimeSeriesBase):
             for details on the filter design
         TimeSeries.filter
             for details on how the filter is applied
-
-        Notes
-        -----
-        When using `scipy < 0.16.0` some higher-order filters may be
-        unstable. With `scipy >= 0.16.0` higher-order filters are
-        decomposed into second-order-sections, and so are much more stable.
         """
         # design filter
         filt = filter_design.bandpass(flow, fhigh, self.sample_rate,
@@ -938,8 +917,7 @@ class TimeSeries(TimeSeriesBase):
         if isinstance(rate, units.Quantity):
             rate = rate.value
         factor = (self.sample_rate.value / rate)
-        # NOTE: use math.isclose when python >= 3.5
-        if numpy.isclose(factor, 1., rtol=1e-09, atol=0.):
+        if math.isclose(factor, 1., rel_tol=1e-09, abs_tol=0.):
             warnings.warn(
                 "resample() rate matches current sample_rate ({}), returning "
                 "input data unmodified; please double-check your "
@@ -1037,14 +1015,8 @@ class TimeSeries(TimeSeriesBase):
 
         Notes
         -----
-        IIR filters are converted either into cascading
-        second-order sections (if `scipy >= 0.16` is installed), or into the
-        ``(numerator, denominator)`` representation before being applied
-        to this `TimeSeries`.
-
-        When using `scipy < 0.16` some higher-order filters may be
-        unstable. With `scipy >= 0.16` higher-order filters are
-        decomposed into second-order-sections, and so are much more stable.
+        IIR filters are converted into cascading second-order sections before
+        being applied to this `TimeSeries`.
 
         FIR filters are passed directly to :func:`scipy.signal.lfilter` or
         :func:`scipy.signal.filtfilt` without any conversions.
@@ -1053,11 +1025,10 @@ class TimeSeries(TimeSeriesBase):
         --------
         scipy.signal.sosfilt
             for details on filtering with second-order sections
-            (`scipy >= 0.16` only)
 
         scipy.signal.sosfiltfilt
             for details on forward-backward filtering with second-order
-            sections (`scipy >= 0.18` only)
+            sections
 
         scipy.signal.lfilter
             for details on filtering (without SOS)
@@ -1103,11 +1074,7 @@ class TimeSeries(TimeSeriesBase):
                 sample_rate=self.sample_rate.to('Hz').value,
         )
         if form == 'zpk':
-            try:
-                sos = signal.zpk2sos(*filt)
-            except AttributeError:  # scipy < 0.16, no SOS filtering
-                sos = None
-                b, a = signal.zpk2tf(*filt)
+            sos = signal.zpk2sos(*filt)
         else:
             sos = None
             b, a = filt
@@ -1753,11 +1720,7 @@ class TimeSeries(TimeSeriesBase):
         >>> ax.legend()
         >>> overlay.show()
         """
-        try:
-            from scipy.signal import find_peaks
-        except ImportError as exc:
-            exc.args = ("Must have scipy>=1.1.0 to utilize this method.",)
-            raise
+        from scipy.signal import find_peaks
         # Find points to gate based on a threshold
         data = self.whiten(**whiten_kwargs) if whiten else self
         window_samples = cluster_window * data.sample_rate.value

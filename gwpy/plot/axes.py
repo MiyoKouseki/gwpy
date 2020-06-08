@@ -28,26 +28,21 @@ import numpy
 
 from astropy.time import Time
 
-from matplotlib import (__version__ as mpl_version, rcParams)
+from matplotlib import rcParams
 from matplotlib.artist import allow_rasterization
 from matplotlib.axes import Axes as _Axes
-from matplotlib.lines import Line2D
+from matplotlib.axes._base import _process_plot_var_args
 from matplotlib.collections import PolyCollection
+from matplotlib.lines import Line2D
 from matplotlib.projections import register_projection
-try:
-    from matplotlib.axes._base import _process_plot_var_args
-except ImportError:  # matplotlib-1.x
-    from matplotlib.axes import _process_plot_var_args
 
 from . import (Plot, colorbar as gcbar)
 from .colors import format_norm
 from .gps import GPS_SCALES
 from .legend import HandlerLine2D
-from ..time import (LIGOTimeGPS, to_gps)
+from ..time import to_gps
 
 __author__ = 'Duncan Macleod <duncan.macleod@ligo.org>'
-
-DEFAULT_SCATTER_COLOR = 'b' if mpl_version < '2.0' else None
 
 
 def log_norm(func):
@@ -103,7 +98,7 @@ def restore_grid(func):
 
 class Axes(_Axes):
     def __init__(self, *args, **kwargs):
-        super(Axes, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
         # handle Series in `ax.plot()`
         self._get_lines = PlotArgsProcessor(self)
@@ -131,7 +126,7 @@ class Axes(_Axes):
                     unit, utc, epoch))
 
         try:
-            super(Axes, self).draw(*args, **kwargs)
+            super().draw(*args, **kwargs)
         finally:
             for ax in labels:  # reset labels
                 ax.isDefault_label = True
@@ -140,12 +135,12 @@ class Axes(_Axes):
 
     def _fmt_xdata(self, x):
         if self.get_xscale() in GPS_SCALES:
-            return str(LIGOTimeGPS(x))
+            return str(to_gps(x))
         return self.xaxis.get_major_formatter().format_data_short(x)
 
     def _fmt_ydata(self, y):
         if self.get_yscale() in GPS_SCALES:
-            return str(LIGOTimeGPS(y))
+            return str(to_gps(y))
         return self.yaxis.get_major_formatter().format_data_short(y)
 
     set_xlim = xlim_as_gps(_Axes.set_xlim)
@@ -175,10 +170,8 @@ class Axes(_Axes):
 
     # -- overloaded plotting methods ------------
 
-    def scatter(self, x, y, c=DEFAULT_SCATTER_COLOR, **kwargs):
+    def scatter(self, x, y, c=None, **kwargs):
         # scatter with auto-sorting by colour
-        if c is None and mpl_version < '2.0':
-            c = DEFAULT_SCATTER_COLOR
         try:
             if c is None:
                 raise ValueError
@@ -193,7 +186,7 @@ class Axes(_Axes):
                 y = numpy.asarray(y)[sortidx]
                 c = numpy.asarray(c)[sortidx]
 
-        return super(Axes, self).scatter(x, y, c=c, **kwargs)
+        return super().scatter(x, y, c=c, **kwargs)
 
     scatter.__doc__ = _Axes.scatter.__doc__.replace(
         'marker :',
@@ -235,7 +228,7 @@ class Axes(_Axes):
         if hasattr(array, "yspan"):  # Array2D
             return self._imshow_array2d(array, *args, **kwargs)
 
-        image = super(Axes, self).imshow(array, *args, **kwargs)
+        image = super().imshow(array, *args, **kwargs)
         self.autoscale(enable=None, axis='both', tight=None)
         return image
 
@@ -280,7 +273,7 @@ class Axes(_Axes):
         """
         if len(args) == 1 and hasattr(args[0], "yindex"):  # Array2D
             return self._pcolormesh_array2d(*args, **kwargs)
-        return super(Axes, self).pcolormesh(*args, **kwargs)
+        return super().pcolormesh(*args, **kwargs)
 
     def _pcolormesh_array2d(self, array, *args, **kwargs):
         """Render an `~gwpy.types.Array2D` using `Axes.pcolormesh`
@@ -325,7 +318,7 @@ class Axes(_Axes):
                 log(hrange[0], logbase), log(hrange[1], logbase),
                 nbins+1, endpoint=True)
 
-        return super(Axes, self).hist(x, *args, **kwargs)
+        return super().hist(x, *args, **kwargs)
 
     hist.__doc__ = _Axes.hist.__doc__.replace(
         'color :',
@@ -510,8 +503,7 @@ class Axes(_Axes):
             )
         alpha = kwargs.pop("alpha", None)
         if alpha:
-            if mpl_version >= "1.3.0":  # matplotlib >= 1.3.0
-                kwargs.setdefault("framealpha", alpha)
+            kwargs.setdefault("framealpha", alpha)
             warnings.warn(
                 "the alpha keyword to gwpy.plot.Axes.legend has been "
                 "deprecated and will be removed in a future release; "
@@ -525,9 +517,20 @@ class Axes(_Axes):
             handler_map.setdefault(Line2D, HandlerLine2D(linewidth or 6))
 
         # create legend
-        return super(Axes, self).legend(*args, **kwargs)
+        return super().legend(*args, **kwargs)
 
-    legend.__doc__ = _Axes.legend.__doc__
+    legend.__doc__ = _Axes.legend.__doc__.replace(
+        "Call signatures",
+        """.. note::
+
+   This method uses a custom default legend handler for
+   `~matplotlib.lines.Line2D` objects, with increased linewidth relative
+   to the upstream :meth:`~matplotlib.axes.Axes.legend` method.
+   To disable this, pass ``handler_map=None``, or create and pass your
+   own handler class.  See :ref:`gwpy-plot-legend` for more details.
+
+Call signatures""",
+    )
 
     def colorbar(self, mappable=None, **kwargs):
         """Add a `~matplotlib.colorbar.Colorbar` to these `Axes`
@@ -604,4 +607,4 @@ class PlotArgsProcessor(_process_plot_var_args):
                 args = args[1:]
             newargs.extend(this)
 
-        return super(PlotArgsProcessor, self).__call__(*newargs, **kwargs)
+        return super().__call__(*newargs, **kwargs)

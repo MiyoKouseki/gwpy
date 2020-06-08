@@ -23,28 +23,21 @@ import pytest
 
 import numpy
 
-from matplotlib import (rcParams, __version__ as mpl_version)
+from matplotlib import rcParams
 from matplotlib.colors import ColorConverter
 from matplotlib.collections import PatchCollection
 
 from ...segments import (Segment, SegmentList, SegmentListDict,
                          DataQualityFlag, DataQualityDict)
-from ...time import LIGOTimeGPS
+from ...time import to_gps
 from .. import SegmentAxes
 from ..segments import SegmentRectangle
 from .test_axes import TestAxes as _TestAxes
 
 # extract color cycle
 COLOR_CONVERTER = ColorConverter()
-try:
-    COLOR_CYCLE = rcParams['axes.prop_cycle'].by_key()['color']
-except KeyError:  # mpl < 1.5
-    COLOR0 = COLOR_CONVERTER.to_rgba('b')
-else:
-    if mpl_version >= '2.0':
-        COLOR0 = COLOR_CONVERTER.to_rgba(COLOR_CYCLE[0])
-    else:
-        COLOR0 = COLOR_CONVERTER.to_rgba('b')
+COLOR_CYCLE = rcParams['axes.prop_cycle'].by_key()['color']
+COLOR0 = COLOR_CONVERTER.to_rgba(COLOR_CYCLE[0])
 
 
 class TestSegmentAxes(_TestAxes):
@@ -147,7 +140,7 @@ class TestSegmentAxes(_TestAxes):
     def test_fmt_data(self, ax):
         # just check that the LIGOTimeGPS repr is in place
         value = 1234567890.123
-        assert ax.format_xdata(value) == str(LIGOTimeGPS(value))
+        assert ax.format_xdata(value) == str(to_gps(value))
 
     # -- disable tests from upstream
 
@@ -160,7 +153,7 @@ def test_segmentrectangle():
     assert patch.get_xy(), (1.1, 9.6)
     assert numpy.isclose(patch.get_height(), 0.8)
     assert numpy.isclose(patch.get_width(), 1.3)
-    assert patch.get_facecolor(), COLOR0
+    assert patch.get_facecolor() == COLOR0
 
     # check kwarg passing
     patch = SegmentRectangle((1.1, 2.4), 10, facecolor='red')

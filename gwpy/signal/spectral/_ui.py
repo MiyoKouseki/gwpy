@@ -22,15 +22,14 @@ This module provides the methods that eventually get called by TimeSeries.xxx,
 so isn't really for direct user interaction.
 """
 
-from __future__ import absolute_import
-
 from functools import wraps
-
-from six import string_types
 
 import numpy
 
-from scipy.signal import get_window
+from scipy.signal import (
+    get_window,
+    periodogram as scipy_periodogram,
+)
 
 from astropy.units import Quantity
 
@@ -177,7 +176,7 @@ def _normalize_overlap(overlap, window, nfft, samp, method='welch'):
     """
     if method == 'bartlett':
         return 0
-    if overlap is None and isinstance(window, string_types):
+    if overlap is None and isinstance(window, str):
         return recommended_overlap(window, nfft)
     if overlap is None:
         return 0
@@ -209,15 +208,15 @@ def _normalize_window(window, nfft, library, dtype):
     """
     if library == '_lal' and isinstance(window, numpy.ndarray):
         from ._lal import window_from_array
-        return window_from_array(window)
+        return window_from_array(window, dtype=dtype)
     if library == '_lal':
         from ._lal import generate_window
         return generate_window(nfft, window=window, dtype=dtype)
-    if isinstance(window, string_types):
+    if isinstance(window, str):
         window = canonical_name(window)
-    if isinstance(window, string_types + (tuple,)):
+    if isinstance(window, (str, tuple)):
         return get_window(window, nfft)
-    return None
+    return window
 
 
 def set_fft_params(func):
@@ -232,7 +231,7 @@ def set_fft_params(func):
         else:
             data = series
 
-        # normalise FFT parmeters for all libraries
+        # normalise FFT parameters for all libraries
         normalize_fft_params(data, kwargs=kwargs, func=method_func)
 
         return func(series, method_func, *args, **kwargs)
@@ -290,6 +289,15 @@ def _psdn(timeseries, method_func, *args, **kwargs):
                            *args, **kwargs)
 
 
+def _psd(bundle):
+    """Calculate a single PSD for a spectrogram
+    """
+    series, method_func, args, kwargs = bundle
+    psd_ = _psdn(series, method_func, *args, **kwargs)
+    del psd_.epoch  # fixes Segmentation fault (no idea why it faults)
+    return psd_
+
+
 def average_spectrogram(timeseries, method_func, stride, *args, **kwargs):
     """Generate an average spectrogram using a method function
 
@@ -324,52 +332,50 @@ def average_spectrogram(timeseries, method_func, stride, *args, **kwargs):
     if noverlap >= nfft:
         raise ValueError("overlap must be less than fftlength")
 
-    # set up single process Spectrogram method
-    def _psd(series):
-        """Calculate a single PSD for a spectrogram
-        """
-        psd_ = _psdn(series, method_func, *args, **kwargs)
-        del psd_.epoch  # fixes Segmentation fault (no idea why it faults)
-        return psd_
-
     # define chunks
     tschunks = _chunk_timeseries(timeseries, nstride, noverlap)
     if other is not None:
         otherchunks = _chunk_timeseries(other, nstride, noverlap)
         tschunks = zip(tschunks, otherchunks)
 
+    # bundle inputs for _psd
+    inputs = [(chunk, method_func, args, kwargs) for chunk in tschunks]
+
     # calculate PSDs
-    psds = mp_utils.multiprocess_with_queues(nproc, _psd, tschunks)
+    psds = mp_utils.multiprocess_with_queues(nproc, _psd, inputs)
 
     # recombobulate PSDs into a spectrogram
     return Spectrogram.from_spectra(*psds, epoch=epoch, dt=stride)
 
 
-@set_fft_params
-def spectrogram(timeseries, method_func, **kwargs):
-    """Generate a spectrogram using a method function
+def _periodogram(bundle):
+    """Calculate a single periodogram for a spectrogram
+    """
+    series, kwargs = bundle
+    return scipy_periodogram(series, **kwargs)[1]
+
+
+def spectrogram(timeseries, **kwargs):
+    """Generate a spectrogram by stacking periodograms
 
     Each time bin of the resulting spectrogram is a PSD estimate using
-    a single FFT
+    a :func:`scipy.signal.periodogram`
     """
     from ...spectrogram import Spectrogram
+
+    # normalise FFT parameters
+    normalize_fft_params(timeseries, kwargs=kwargs)
 
     # get params
     sampling = timeseries.sample_rate.to('Hz').value
     nproc = kwargs.pop('nproc', 1)
-    nfft = kwargs.pop('nfft')
+    nfft = kwargs.get('nfft')
     noverlap = kwargs.pop('noverlap')
     nstride = nfft - noverlap
 
     # sanity check parameters
     if noverlap >= nfft:
         raise ValueError("overlap must be less than fftlength")
-
-    # set up single process Spectrogram method
-    def _psd(series):
-        """Calculate a single PSD for a spectrogram
-        """
-        return method_func(series, nfft=nfft, **kwargs)[1]
 
     # define chunks
     chunks = []
@@ -381,8 +387,15 @@ def spectrogram(timeseries, method_func, **kwargs):
 
     tschunks = (timeseries.value[i:j] for i, j in chunks)
 
+    # bundle inputs for _psd
+    inputs = [(chunk, kwargs) for chunk in tschunks]
+
     # calculate PSDs with multiprocessing
-    psds = mp_utils.multiprocess_with_queues(nproc, _psd, tschunks)
+    psds = mp_utils.multiprocess_with_queues(
+        nproc,
+        _periodogram,
+        inputs,
+    )
 
     # convert PSDs to array with spacing for averages
     numtimes = 1 + int((timeseries.size - nstride) / nstride)
@@ -435,6 +448,6 @@ def _chunk_timeseries(series, nstride, noverlap):
 
 def _fft_library(method_func):
     mod = method_func.__module__.rsplit('.', 1)[-1]
-    if mod == 'median-mean':
+    if mod == 'median_mean':
         return "lal"
     return mod

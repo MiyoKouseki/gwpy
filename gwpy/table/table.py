@@ -24,8 +24,6 @@ from functools import wraps
 from operator import attrgetter
 from math import ceil
 
-from six import string_types
-
 import numpy
 
 from gwosc.api import DEFAULT_URL as DEFAULT_GWOSC_URL
@@ -112,7 +110,7 @@ class EventColumn(Column):
     def __new__(cls, *args, **kwargs):
         warnings.warn("the EventColumn is deprecated, and will be removed in "
                       "a future gwpy release", DeprecationWarning)
-        super(EventColumn, cls).__new__(*args, **kwargs)
+        super().__new__(*args, **kwargs)
 
     def in_segmentlist(self, segmentlist):
         """Return the index of values lying inside the given segmentlist
@@ -335,7 +333,22 @@ class EventTable(Table):
         # standard registered fetch
         from .io.fetch import get_fetcher
         fetcher = get_fetcher(format_, cls)
-        return fetcher(*args, **kwargs)
+        out = fetcher(*args, **kwargs)
+        if not isinstance(out, cls):
+            if issubclass(cls, type(out)):
+                try:
+                    return cls(out)
+                except Exception as exc:
+                    exc.args = (
+                        "could not convert fetch() output to {0}: {1}".format(
+                            cls.__name__, str(exc),
+                        ),
+                    )
+                    raise
+            raise TypeError(
+                "fetch() should return a {0} instance".format(cls.__name__),
+            )
+        return out
 
     @classmethod
     def fetch_open_data(cls, catalog, columns=None, selection=None,
@@ -493,7 +506,7 @@ class EventTable(Table):
             bins = [(-numpy.inf, numpy.inf)]
         if operator == 'in' and not isinstance(bins[0], tuple):
             bins = [(bin_, bins[i+1]) for i, bin_ in enumerate(bins[:-1])]
-        elif isinstance(operator, string_types):
+        elif isinstance(operator, str):
             op_func = parse_operator(operator)
         else:
             op_func = operator
@@ -706,3 +719,66 @@ class EventTable(Table):
         >>> filter(my_table, ('time', in_segmentlist, segs))
         """
         return filter_table(self, *column_filters)
+
+    def cluster(self, index, rank, window):
+        """Cluster this `EventTable` over a given column, `index`, maximizing
+        over a specified column in the table, `rank`.
+
+        The clustering algorithm uses a pooling method to identify groups
+        of points that are all separated in `index` by less than `window`.
+
+        Each cluster of nearby points is replaced by the point in that cluster
+        with the maximum value of `rank`.
+
+        Parameters
+        ----------
+        index : `str`
+            name of the column which is used to search for clusters
+
+        rank : `str`
+            name of the column to maximize over in each cluster
+
+        window : `float`
+            window to use when clustering data points, will raise
+            ValueError if `window > 0` is not satisfied
+
+        Returns
+        -------
+        table : `EventTable`
+            a new table that has had the clustering algorithm applied via
+            slicing of the original
+
+        Examples
+        --------
+        To cluster an `EventTable` (``table``) whose `index` is
+        `end_time`, `window` is `0.1`, and maximize over `snr`:
+
+        >>> table.cluster('end_time', 'snr', 0.1)
+        """
+        if window <= 0.0:
+            raise ValueError('Window must be a positive value')
+
+        # Generate index and rank vectors that are ordered
+        orderidx = numpy.argsort(self[index])
+        col = self[index][orderidx]
+        param = self[rank][orderidx]
+
+        # Find all points where the index vector changes by less than window
+        # and divide the resulting array into clusters of adjacent points
+        clusterpoints = numpy.where(numpy.diff(col) <= window)[0]
+        sublists = numpy.split(clusterpoints,
+                               numpy.where(numpy.diff(clusterpoints) > 1)[0]+1)
+
+        # Add end-points to each cluster and find the index of the maximum
+        # point in each list
+        padded_sublists = [numpy.append(s, numpy.array([s[-1]+1]))
+                           for s in sublists]
+        maxidx = [s[numpy.argmax(param[s])] for s in padded_sublists]
+
+        # Construct a mask that removes all points within clusters and
+        # replaces them with the maximum point from each cluster
+        mask = numpy.ones_like(col, dtype=bool)
+        mask[numpy.concatenate(padded_sublists)] = False
+        mask[maxidx] = True
+
+        return self[orderidx[mask]]

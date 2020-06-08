@@ -19,9 +19,9 @@
 """Unit tests for `gwpy.table`
 """
 
+from socket import timeout
 from ssl import SSLError
-
-from six.moves.urllib.error import URLError
+from urllib.error import URLError
 
 import pytest
 
@@ -51,14 +51,17 @@ JSON_RESPONSE = {
 }
 
 
-@utils.skip_minimum_version('astropy', '2.0.4')
 class TestGravitySpyTable(_TestEventTable):
     TABLE = GravitySpyTable
 
     def test_search(self):
         try:
-            table = self.TABLE.search(gravityspy_id="8FHTgA8MEu", howmany=1)
-        except (URLError, SSLError) as e:
+            table = self.TABLE.search(
+                gravityspy_id="8FHTgA8MEu",
+                howmany=1,
+                remote_timeout=60,
+            )
+        except (URLError, SSLError, timeout) as e:  # pragma: no-cover
             pytest.skip(str(e))
 
         utils.assert_table_equal(table, self.TABLE(JSON_RESPONSE))

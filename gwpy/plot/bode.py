@@ -105,7 +105,7 @@ class BodePlot(Plot):
                 figargs[key] = kwargs.pop(key)
 
         # generate figure
-        super(BodePlot, self).__init__(**figargs)
+        super().__init__(**figargs)
 
         # delete the axes, and create two more
         self.add_subplot(2, 1, 1)
@@ -133,12 +133,9 @@ class BodePlot(Plot):
         self.paxes.set_ylabel('Phase [deg]')
         self.maxes.set_xscale('log')
         self.paxes.set_xscale('log')
-        try:
-            self.paxes.yaxis.set_major_locator(
-                MaxNLocator(nbins='auto', steps=[4.5, 9]))
-        except ValueError:  # matplotlib < 2.0
-            self.paxes.yaxis.set_major_locator(
-                MaxNLocator(nbins=9, steps=[4.5, 9]))
+        self.paxes.yaxis.set_major_locator(
+            MaxNLocator(nbins='auto', steps=[4.5, 9]),
+        )
         self.paxes.yaxis.set_minor_locator(
             MaxNLocator(nbins=20, steps=[4.5, 9]))
         if title:
@@ -194,16 +191,7 @@ class BodePlot(Plot):
         mag, phase : `tuple` of `lines <matplotlib.lines.Line2D>`
             the lines drawn for the magnitude and phase of the filter.
         """
-        try:
-            from scipy.signal import (lti, dlti)
-        except ImportError as exc:  # scipy < 0.18.0
-            exc.args = (
-                "scipy >= 0.18.0 is required to use {}.add_filter: {}".format(
-                    type(self).__name__,
-                    str(exc),
-                ),
-            )
-            raise
+        from scipy.signal import (lti, dlti)
         from gwpy.signal.filter_design import parse_filter
 
         if not analog:

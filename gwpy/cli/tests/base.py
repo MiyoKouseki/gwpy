@@ -21,6 +21,7 @@
 
 import os
 from argparse import ArgumentParser
+from unittest import mock
 
 import pytest
 
@@ -33,7 +34,6 @@ from ...frequencyseries import FrequencySeries
 from ...timeseries import TimeSeries
 from ...plot import Plot
 from ...testing import (utils, mocks)
-from ...testing.compat import mock
 
 __author__ = 'Duncan Macleod <duncan.macleod@ligo.org>'
 
@@ -277,10 +277,6 @@ class _TestImageProduct(_TestCliProduct):
     def test_extra_plot_options(self, args):
         for key in ('nocolorbar', 'cmap', 'imin', 'imax'):
             assert hasattr(args, key)
-
-    def test_finalize_arguments(self, prod):
-        # finalize_arguments() called by __init__
-        assert prod.args.cmap == cliproduct.DEFAULT_CMAP.name
 
     @pytest.mark.parametrize('visible', [False, True])
     def test_set_plot_properties(self, plotprod, visible):

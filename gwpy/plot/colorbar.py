@@ -21,13 +21,12 @@
 
 import warnings
 
-from matplotlib import __version__ as mpl_version
 from matplotlib.axes import SubplotBase
 from matplotlib.colors import LogNorm
 from matplotlib.legend import Legend
 
 from .colors import format_norm
-from .log import CombinedLogFormatterMathtext
+from .log import LogFormatter
 
 __author__ = 'Duncan Macleod <duncan.macleod@ligo.org>'
 
@@ -65,7 +64,7 @@ def process_colorbar_kwargs(figure, mappable=None, ax=None, use_axesgrid=True,
     # -- set tick formatting
 
     if isinstance(norm, LogNorm):
-        kwargs.setdefault('format', CombinedLogFormatterMathtext())
+        kwargs.setdefault('format', LogFormatter())
 
     # -- create axes for colorbar (if required)
 
@@ -132,8 +131,7 @@ def _scale_height(value, ax):
 
 def make_axes_axesgrid(ax, **kwargs):
     kwargs.setdefault('location', 'right')
-    if mpl_version >= '1.3.0':
-        kwargs.setdefault('ticklocation', kwargs['location'])
+    kwargs.setdefault('ticklocation', kwargs['location'])
 
     fraction = kwargs.pop('fraction', 0.)
     try:

@@ -22,23 +22,21 @@
 import itertools
 import importlib
 import warnings
-try:
-    from collections.abc import (KeysView, ValuesView)
-except ImportError:  # python < 3.3
-    from collections import (KeysView, ValuesView)
-
-from six.moves import zip_longest
+from collections.abc import (KeysView, ValuesView)
+from itertools import zip_longest
 
 import numpy
 
 from matplotlib import (figure, get_backend, _pylab_helpers)
 from matplotlib.artist import setp
 from matplotlib.gridspec import GridSpec
+from matplotlib.ticker import LogFormatterSciNotation
 from matplotlib.projections import get_projection_class
 
 from . import (colorbar as gcbar, utils)
-from .rc import (rcParams, MPL_RCPARAMS, get_subplot_params)
 from .gps import GPS_SCALES
+from .log import LogFormatter
+from .rc import (rcParams, MPL_RCPARAMS, get_subplot_params)
 
 __all__ = ['Plot']
 
@@ -123,7 +121,7 @@ class Plot(figure.Figure):
         # create Figure
         num = kwargs.pop('num', max(pyplot.get_fignums() or {0}) + 1)
         self._parse_subplotpars(kwargs)
-        super(Plot, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.number = num
 
         # add interactivity (scraped from pyplot.figure())
@@ -266,10 +264,6 @@ class Plot(figure.Figure):
         # mainly for user convenience. However, as of matplotlib-3.0.0,
         # pyplot.show() ends up calling _back_ to Plot.show(),
         # so we have to be careful not to end up in a recursive loop
-        #
-        # Developer note: if we ever make it pinning to matplotlib >=3.0.0
-        #                 this method can likely be completely removed
-        #
         import inspect
         try:
             callframe = inspect.currentframe().f_back
@@ -280,7 +274,7 @@ class Plot(figure.Figure):
                 block = False
 
         # render
-        super(Plot, self).show(warn=warn)
+        super().show(warn=warn)
 
         # don't block on ipython with interactive backends
         if block is None and interactive_backend():
@@ -289,10 +283,7 @@ class Plot(figure.Figure):
         # block in GUI loop (stolen from mpl.backend_bases._Backend.show)
         if block:
             backend_mod = get_backend_mod()
-            try:
-                backend_mod.Show().mainloop()
-            except AttributeError:  # matplotlib < 2.1.0
-                backend_mod.show.mainloop()
+            backend_mod.Show().mainloop()
 
     def save(self, *args, **kwargs):
         """Save the figure to disk.
@@ -336,7 +327,7 @@ class Plot(figure.Figure):
     # -- colour bars ----------------------------
 
     def colorbar(self, mappable=None, cax=None, ax=None, fraction=0.,
-                 label=None, emit=True, **kwargs):
+                 emit=True, **kwargs):
         """Add a colorbar to the current `Plot`
 
         A colorbar must be associated with an `Axes` on this `Plot`,
@@ -402,10 +393,24 @@ class Plot(figure.Figure):
             self, mappable, ax, cax=cax, fraction=fraction, **kwargs)
 
         # generate colour bar
-        cbar = super(Plot, self).colorbar(mappable, **kwargs)
+        cbar = super().colorbar(mappable, **kwargs)
+
+        # force the minor ticks to be the same as the major ticks
+        # in practice, this normally swaps out LogFormatterSciNotation to
+        # gwpy's LogFormatter; # this is hacky, and would be improved using a
+        # subclass of Colorbar in the first place, but matplotlib's
+        # cbar_factory doesn't support that
+        longaxis = (cbar.ax.yaxis if cbar.orientation == "vertical" else
+                    cbar.ax.xaxis)
+        if (
+                isinstance(cbar.formatter, LogFormatter) and
+                isinstance(longaxis.get_minor_formatter(),
+                           LogFormatterSciNotation)
+        ):
+            longaxis.set_minor_formatter(type(cbar.formatter)())
+
+        # record colorbar in parent object
         self.colorbars.append(cbar)
-        if label:  # mpl<1.3 doesn't accept label in Colorbar constructor
-            cbar.set_label(label)
 
         # update mappables for this axis
         if emit:

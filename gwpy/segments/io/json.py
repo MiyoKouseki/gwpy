@@ -19,11 +19,7 @@
 """Read/write segments and flags from DQSEGDB-format JSON
 """
 
-from __future__ import absolute_import
-
 import json
-
-from six import string_types
 
 from ...io import registry
 from ...io.utils import identify_factory
@@ -38,7 +34,7 @@ def read_json_flag(fobj):
     """Read a `DataQualityFlag` from a segments-web.ligo.org JSON file
     """
     # read from filename
-    if isinstance(fobj, string_types):
+    if isinstance(fobj, str):
         with open(fobj, 'r') as fobj2:
             return read_json_flag(fobj2)
 
@@ -87,7 +83,7 @@ def write_json_flag(flag, fobj, **kwargs):
         for details on acceptable keyword arguments
     """
     # write to filename
-    if isinstance(fobj, string_types):
+    if isinstance(fobj, str):
         with open(fobj, 'w') as fobj2:
             return write_json_flag(flag, fobj2, **kwargs)
 

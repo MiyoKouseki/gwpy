@@ -24,8 +24,8 @@ import re
 import tempfile
 from io import BytesIO
 from ssl import SSLError
-
-from six.moves.urllib.error import (URLError, HTTPError)
+from unittest import mock
+from urllib.error import (URLError, HTTPError)
 
 import pytest
 
@@ -37,7 +37,6 @@ from ...plot import SegmentAxes
 from ...segments import (Segment, SegmentList,
                          DataQualityFlag, DataQualityDict)
 from ...testing import (mocks, utils)
-from ...testing.compat import mock
 from ...utils.misc import null_context
 
 __author__ = 'Duncan Macleod <duncan.macleod@ligo.org>'
@@ -162,7 +161,7 @@ def query_segdb(query_func, *args, **kwargs):
              mock.patch('glue.segmentdb.segmentdb_utils.query_segments',
                         mocks.segdb_query_segments(QUERY_RESULT)):
             return query_func(*args, **kwargs)
-    except ImportError as e:
+    except ImportError as e:  # pragma: no-cover
         pytest.skip(str(e))
 
 
@@ -519,17 +518,8 @@ class TestDataQualityFlag(object):
             f2 = self.TEST_CLASS.read(fp)
             utils.assert_flag_equal(f2, flag)
 
-    @utils.skip_missing_dependency('glue.ligolw.lsctables')
-    @pytest.mark.parametrize("ilwdchar_compat", [
-        pytest.param(
-            False,
-            marks=utils.skip_missing_dependency("ligo.lw.lsctables"),
-        ),
-        pytest.param(
-            True,
-            marks=utils.skip_missing_dependency("glue.ligolw.lsctables"),
-        ),
-    ])
+    @utils.skip_missing_dependency('ligo.lw.lsctables')
+    @pytest.mark.parametrize("ilwdchar_compat", [False, True])
     def test_read_write_ligolw(self, flag, ilwdchar_compat):
         utils.test_read_write(
             flag, "ligolw", extension="xml",
@@ -642,7 +632,7 @@ class TestDataQualityFlag(object):
         try:
             segs = self.TEST_CLASS.fetch_open_data(
                 'H1_DATA', 946339215, 946368015)
-        except (URLError, SSLError) as exc:
+        except (URLError, SSLError) as exc:  # pragma: no-cover
             pytest.skip(str(exc))
         assert segs.ifo == 'H1'
         assert segs.name == 'H1:DATA'
@@ -808,16 +798,8 @@ class TestDataQualityDict(object):
             _read_write(autoidentify=True)
         _read_write(autoidentify=True, write_kw={'overwrite': True})
 
-    @pytest.mark.parametrize("ilwdchar_compat", [
-        pytest.param(
-            False,
-            marks=utils.skip_missing_dependency("ligo.lw.lsctables"),
-        ),
-        pytest.param(
-            True,
-            marks=utils.skip_missing_dependency("glue.ligolw.lsctables"),
-        ),
-    ])
+    @utils.skip_missing_dependency('ligo.lw.lsctables')
+    @pytest.mark.parametrize("ilwdchar_compat", [False, True])
     def test_read_write_ligolw(self, instance, ilwdchar_compat):
         def _assert(a, b):
             return utils.assert_dict_equal(a, b, utils.assert_flag_equal)
@@ -830,7 +812,12 @@ class TestDataQualityDict(object):
         )
 
     def test_read_on_missing(self, instance):
-        with h5py.File('test', driver='core', backing_store=False) as h5f:
+        with h5py.File(
+                'test',
+                mode='w-',
+                driver='core',
+                backing_store=False,
+        ) as h5f:
             instance.write(h5f)
             names = ['randomname']
 
@@ -857,20 +844,8 @@ class TestDataQualityDict(object):
             with pytest.raises(ValueError) as exc:
                 _read(on_missing='blah')
 
-    @pytest.mark.parametrize("ilwdchar_compat", [
-        pytest.param(  # default `None` maps to `True` for now
-            None,
-            marks=utils.skip_missing_dependency("ligo.lw.lsctables"),
-        ),
-        pytest.param(
-            False,
-            marks=utils.skip_missing_dependency("ligo.lw.lsctables"),
-        ),
-        pytest.param(
-            True,
-            marks=utils.skip_missing_dependency("glue.ligolw.lsctables"),
-        ),
-    ])
+    @utils.skip_missing_dependency('ligo.lw.lsctables')
+    @pytest.mark.parametrize("ilwdchar_compat", [None, False, True])
     def test_to_ligolw_tables(self, instance, ilwdchar_compat):
         if ilwdchar_compat is None:
             ctx = pytest.warns(PendingDeprecationWarning)

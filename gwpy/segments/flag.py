@@ -26,8 +26,6 @@ The `DataQualityDict` is just a `dict` of flags, provided as a convenience
 for handling multiple flags over the same global time interval.
 """
 
-from __future__ import absolute_import
-
 import datetime
 import json
 import operator
@@ -37,13 +35,12 @@ import warnings
 from io import BytesIO
 from collections import OrderedDict
 from copy import (copy as shallowcopy, deepcopy)
+from functools import reduce
 from math import (floor, ceil)
+from queue import Queue
 from threading import Thread
-
-from six.moves import reduce
-from six.moves.urllib.error import (URLError, HTTPError)
-from six.moves.urllib.parse import urlparse
-from six.moves.queue import Queue
+from urllib.error import (URLError, HTTPError)
+from urllib.parse import urlparse
 
 from numpy import inf
 
@@ -1706,7 +1703,7 @@ class DataQualityDict(OrderedDict):
         """
         if deep:
             return deepcopy(self)
-        return super(DataQualityDict, self).copy()
+        return super().copy()
 
     def __iand__(self, other):
         for key, value in other.items():

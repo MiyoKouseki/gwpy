@@ -20,20 +20,17 @@
 """
 
 import os.path
+import re
 import shutil
 import tempfile
 from io import BytesIO
 from ssl import SSLError
-
-from six import PY2
-from six.moves.urllib.error import URLError
+from unittest import mock
+from urllib.error import URLError
 
 import pytest
 
-import sqlparse
-
-from numpy import (random, isclose, dtype, asarray)
-from numpy.testing import assert_array_equal
+from numpy import (random, isclose, dtype, asarray, all)
 from numpy.ma.core import MaskedConstant
 
 import h5py
@@ -46,7 +43,6 @@ from ...frequencyseries import FrequencySeries
 from ...io import ligolw as io_ligolw
 from ...segments import (Segment, SegmentList)
 from ...testing import utils
-from ...testing.compat import mock
 from ...time import LIGOTimeGPS
 from ...timeseries import (TimeSeries, TimeSeriesDict)
 from .. import (Table, EventTable, filters)
@@ -70,19 +66,22 @@ def mock_hacr_connection(table, start, stop):
     cursor = mock.MagicMock()
 
     def execute(qstr):
-        cursor._query = sqlparse.parse(qstr)[0]
+        cursor._query = qstr
         return len(table)
 
     cursor.execute = execute
+    column_regex = re.compile(r"\Aselect (.*) from ", re.I)
+    select_regex = re.compile(r"where (.*) (order by .*)?\Z", re.I)
 
     def fetchall():
-        if cursor._query.get_real_name() == 'job':
+        q = cursor._query
+        if "from job" in q:
             return [(1, start, stop)]
-        if cursor._query.get_real_name() == 'mhacr':
-            columns = list(map(
-                str, list(cursor._query.get_sublists())[0].get_identifiers()))
-            selections = list(map(
-                str, list(cursor._query.get_sublists())[2].get_sublists()))
+        if "from mhacr" in q:
+            columns = column_regex.match(q).groups()[0].split(", ")
+            selections = (
+                select_regex.search(q).groups()[0].strip().split(" and ")
+            )
             return map(tuple, filter_table(table, selections[3:])[columns])
 
     cursor.fetchall = fetchall
@@ -119,34 +118,14 @@ class TestTable(object):
     def table(cls):
         return cls.create(100, ['time', 'snr', 'frequency'])
 
-    @staticmethod
+    @classmethod
     @pytest.fixture()
-    def llwtable():
-        from ligo.lw.lsctables import (New, SnglBurstTable)
-        llwtab = New(SnglBurstTable, columns=["peak_frequency", "snr"])
-        for i in range(10):
-            row = llwtab.RowType()
-            row.peak_frequency = float(i)
-            row.snr = float(i)
-            llwtab.append(row)
-        return llwtab
+    def clustertable(cls):
+        return cls.TABLE(data=[[11, 1, 1, 10, 1, 1, 9],
+                               [0.0, 1.9, 1.95, 2.0, 2.05, 2.1, 4.0]],
+                         names=['amplitude', 'time'])
 
     # -- test I/O -------------------------------
-
-    @utils.skip_missing_dependency('ligo.lw.lsctables')
-    def test_ligolw(self, llwtable):
-        tab = self.TABLE(llwtable)
-        assert set(tab.colnames) == {"peak_frequency", "snr"}
-        assert_array_equal(tab["snr"], llwtable.getColumnByName("snr"))
-
-    @utils.skip_missing_dependency('ligo.lw.lsctables')
-    def test_ligolw_rename(self, llwtable):
-        tab = self.TABLE(llwtable, rename={"peak_frequency": "frequency"})
-        assert set(tab.colnames) == {"frequency", "snr"}
-        assert_array_equal(
-            tab["frequency"],
-            llwtable.getColumnByName("peak_frequency"),
-        )
 
     @utils.skip_missing_dependency('ligo.lw.lsctables')
     @pytest.mark.parametrize('ext', ['xml', 'xml.gz'])
@@ -184,13 +163,8 @@ class TestTable(object):
                 t3['peak'], table['peak_time'] + table['peak_time_ns'] * 1e-9)
 
             # check reading multiple tables works
-            try:
-                t3 = self.TABLE.read([tmp, tmp], format='ligolw',
-                                     tablename='sngl_burst')
-            except NameError as e:
-                if not PY2:  # ligolw not patched for python3 just yet
-                    pytest.xfail(str(e))
-                raise
+            t3 = self.TABLE.read([tmp, tmp], format='ligolw',
+                                 tablename='sngl_burst')
             utils.assert_table_equal(vstack((t2, t2)), t3)
 
             # check writing to existing file raises IOError
@@ -199,14 +173,7 @@ class TestTable(object):
             assert str(exc.value) == 'File exists: %s' % tmp
 
             # check overwrite=True, append=False rewrites table
-            try:
-                _write(overwrite=True)
-            except TypeError as e:
-                # ligolw is not python3-compatbile, so skip if it fails
-                if not PY2 and (
-                        str(e) == 'write() argument must be str, not bytes'):
-                    pytest.xfail(str(e))
-                raise
+            _write(overwrite=True)
             t3 = _read()
             utils.assert_table_equal(t2, t3)
 
@@ -236,7 +203,7 @@ class TestTable(object):
             assert str(exc.value) == ('document must contain exactly '
                                       'one sngl_burst table')
 
-    @utils.skip_missing_dependency('glue.ligolw.lsctables')
+    @utils.skip_missing_dependency('ligo.lw.lsctables')
     def test_read_write_ligolw_ilwdchar_compat(self):
         from glue.ligolw.ilwd import get_ilwdchar_class
         from glue.ligolw.lsctables import SnglBurstTable
@@ -336,6 +303,7 @@ class TestTable(object):
                                  ('time', filters.in_segmentlist, segs)),
             )
 
+    @utils.skip_missing_dependency('LDAStools.frameCPP')
     def test_read_write_gwf(self):
         table = self.create(100, ['time', 'blah', 'frequency'])
         columns = table.dtype.names
@@ -343,11 +311,11 @@ class TestTable(object):
             # check write
             try:
                 table.write(tmp, 'test_read_write_gwf')
-            except ImportError as exc:  # no frameCPP
-                pytest.skip(str(exc))
-            except TypeError as exc:  # frameCPP broken (2.6.7)
-                if 'ParamList' in str(exc):
-                    pytest.skip("bug in python-ldas-tools-framecpp")
+            except TypeError as exc:  # pragma: no-cover
+                if 'ParamList' in str(exc):  # frameCPP broken (2.6.7)
+                    pytest.skip(
+                        "bug in python-ldas-tools-framecpp: {!s}".format(exc),
+                    )
                 raise
 
             # check read gives back same table
@@ -377,13 +345,9 @@ class TestEventTable(TestTable):
         assert t._get_time_column() == 'blah2'
 
         # check that two GPS columns causes issues
-        try:
-            t.add_column(t['blah2'], name='blah3')
-        except TypeError:  # astropy < 2.0 (or something like that)
-            pass
-        else:
-            with pytest.raises(ValueError):
-                t._get_time_column()
+        t.add_column(t['blah2'], name='blah3')
+        with pytest.raises(ValueError):
+            t._get_time_column()
 
     def test_filter(self, table):
         # check simple filter
@@ -409,9 +373,6 @@ class TestEventTable(TestTable):
         utils.assert_table_equal(
             midf, table.filter('frequency > 100').filter('frequency < 1000'))
 
-        # check unicode parsing (PY2)
-        table.filter(u'snr > 100')
-
     def test_filter_in_segmentlist(self, table):
         # check filtering on segments works
         segs = SegmentList([Segment(100, 200), Segment(400, 500)])
@@ -436,22 +397,29 @@ class TestEventTable(TestTable):
             table.filter(('time', filters.not_in_segmentlist, SegmentList())))
 
     def test_event_rates(self, table):
+        """Test :meth:`gwpy.table.EventTable.event_rate`
+        """
         rate = table.event_rate(1)
         assert isinstance(rate, TimeSeries)
         assert rate.sample_rate == 1 * units.Hz
 
-        # repeat with object dtype
-        try:
-            from lal import LIGOTimeGPS as LalGps
-        except ImportError:
-            return
+    @utils.skip_missing_dependency('lal')
+    def test_event_rates_gpsobject(self, table):
+        """Test that `EventTable.event_rate` can handle object dtypes
+        """
+        rate = table.event_rate(1)
+
+        from lal import LIGOTimeGPS as LalGps
         lgps = list(map(LalGps, table['time']))
         t2 = type(table)(data=[lgps], names=['time'])
         rate2 = t2.event_rate(1, start=table['time'].min())
+
         utils.assert_quantity_sub_equal(rate, rate2)
 
-        # check that method can function without explicit time column
-        # (and no data) if and only if start/end are both given
+    def test_event_rates_start_end(self):
+        """Check that `EventTable.event_rate` can function without explicit time column
+        (and no data) if and only if start/end are both given
+        """
         t2 = self.create(10, names=['a', 'b'])
         with pytest.raises(ValueError) as exc:
             t2.event_rate(1)
@@ -504,6 +472,29 @@ class TestEventTable(TestTable):
 
     def test_get_column(self, table):
         utils.assert_array_equal(table.get_column('snr'), table['snr'])
+
+    def test_cluster(self, clustertable):
+        # check that the central data points are all clustered away,
+        # the original table is unchanged, and all points return their
+        # intended values
+        t = clustertable.cluster('time', 'amplitude', 0.6)
+        assert len(t) == 3
+        assert len(clustertable) == 7
+        assert all(t['amplitude'] == [11, 10, 9])
+        assert all(t['time'] == [0.0, 2.0, 4.0])
+
+    def test_single_point_cluster(self, clustertable):
+        # check that a large cluster window returns at least one data point
+        t = clustertable.cluster('time', 'amplitude', 10)
+        assert len(t) == 1
+        assert all(t['amplitude'] == [11])
+        assert all(t['time'] == [0.0])
+
+    def test_cluster_window(self, clustertable):
+        # check that a non-positive window throws an appropriate ValueError
+        with pytest.raises(ValueError) as exc:
+            clustertable.cluster('time', 'amplitude', 0)
+        assert str(exc.value) == 'Window must be a positive value'
 
     # -- test I/O -------------------------------
 
@@ -627,7 +618,7 @@ class TestEventTable(TestTable):
 
             # add another IFO, then assert that reading the table without
             # specifying the IFO fails
-            with h5py.File(fp) as h5f:
+            with h5py.File(fp, "r+") as h5f:
                 h5f.create_group('Z1')
             with pytest.raises(ValueError) as exc:
                 self.TABLE.read(fp, format="hdf5.pycbc_live")
@@ -679,39 +670,76 @@ class TestEventTable(TestTable):
             if os.path.isdir(os.path.dirname(fp)):
                 shutil.rmtree(os.path.dirname(fp))
 
-    def test_fetch_hacr(self):
-        table = self.create(100, names=HACR_COLUMNS)
+    def test_read_snax(self):
+        table = self.create(
+            100, names=['time', 'snr', 'frequency'])
+        fp = os.path.join(tempfile.mkdtemp(), 'SNAX-0-0.h5')
         try:
-            from pymysql import connect  # noqa: F401
-        except ImportError:
-            mockee = 'gwpy.table.io.hacr.connect'
-        else:
-            mockee = 'pymysql.connect'
-        with mock.patch(mockee) as mock_connect:
-            mock_connect.return_value = mock_hacr_connection(
-                table, 123, 456)
+            # write table in snax format (by hand)
+            with h5py.File(fp, 'w') as h5f:
+                group = h5f.create_group('H1:FAKE')
+                group.create_dataset(data=table, name='0.0_20.0')
 
-            # test simple query returns the full table
-            t2 = self.TABLE.fetch('hacr', 'X1:TEST-CHANNEL', 123, 456)
+            # check that we can read
+            t2 = self.TABLE.read(fp, 'H1:FAKE', format='hdf5.snax')
             utils.assert_table_equal(table, t2)
 
-            # test column selection works
-            t2 = self.TABLE.fetch('hacr', 'X1:TEST-CHANNEL', 123, 456,
-                                  columns=['gps_start', 'snr'])
-            utils.assert_table_equal(table['gps_start', 'snr'], t2)
-
-            # test column selection works
-            t2 = self.TABLE.fetch('hacr', 'X1:TEST-CHANNEL', 123, 456,
-                                  columns=['gps_start', 'snr'],
-                                  selection='freq_central>500')
+            # test with selection and columns
+            t2 = self.TABLE.read(
+                fp,
+                'H1:FAKE',
+                format='hdf5.snax',
+                selection='snr>.5',
+                columns=('time', 'snr'),
+            )
             utils.assert_table_equal(
-                filter_table(table, 'freq_central>500')['gps_start', 'snr'],
-                t2)
+                t2,
+                filter_table(table, 'snr>.5')[('time', 'snr')],
+            )
+
+        finally:
+            if os.path.isdir(os.path.dirname(fp)):
+                shutil.rmtree(os.path.dirname(fp))
+
+    @pytest.fixture(scope="module")
+    def hacr_table(self):
+        """Create a table of HACR-like data, and patch
+        `pymysql.connect` to return it
+        """
+        table = self.create(100, names=HACR_COLUMNS)
+        connect = mock.patch(
+            "pymysql.connect",
+            return_value=mock_hacr_connection(table, 123, 456),
+        )
+        try:
+            connect.start()
+        except ImportError as exc:  # pragma: no-cover
+            pytest.skip(str(exc))
+        yield table
+        connect.stop()
+
+    def test_fetch_hacr(self, hacr_table):
+        t2 = self.TABLE.fetch('hacr', 'X1:TEST-CHANNEL', 123, 456)
+
+        # check type matches
+        assert type(t2) is self.TABLE
+
+        # check response is correct
+        utils.assert_table_equal(hacr_table, t2)
+
+    def test_fetch_hacr_columns(self, hacr_table):
+        t2 = self.TABLE.fetch('hacr', 'X1:TEST-CHANNEL', 123, 456,
+                              columns=['gps_start', 'snr'],
+                              selection='freq_central>500')
+        utils.assert_table_equal(
+            filter_table(hacr_table, 'freq_central>500')['gps_start', 'snr'],
+            t2,
+        )
 
     def test_fetch_open_data(self):
         try:
             table = self.TABLE.fetch_open_data("GWTC-1-confident")
-        except (URLError, SSLError) as exc:
+        except (URLError, SSLError) as exc:  # pragma: no-cover
             pytest.skip(str(exc))
         assert len(table)
         assert {"L_peak", "distance", "mass1"}.intersection(table.colnames)
@@ -727,7 +755,7 @@ class TestEventTable(TestTable):
                 "GWTC-1-confident",
                 selection="mass1 < 5",
                 columns=["name", "mass1", "mass2", "distance"])
-        except (URLError, SSLError) as exc:
+        except (URLError, SSLError) as exc:  # pragma: no-cover
             pytest.skip(str(exc))
         assert len(table) == 1
         assert table[0]["name"] == "GW170817"

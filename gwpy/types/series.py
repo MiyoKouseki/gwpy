@@ -119,7 +119,7 @@ class Series(Array):
                              % (cls.__name__, len(shape)))
 
         # create new object
-        new = super(Series, cls).__new__(cls, value, unit=unit, **kwargs)
+        new = super().__new__(cls, value, unit=unit, **kwargs)
 
         # set x-axis metadata from xindex
         if xindex is not None:
@@ -153,7 +153,7 @@ class Series(Array):
     # -- series creation ------------------------
 
     def __array_finalize__(self, obj):
-        super(Series, self).__array_finalize__(obj)
+        super().__array_finalize__(obj)
         # Array.__array_finalize__ might set _xindex to None, so delete it
         if getattr(self, '_xindex', None) is None:
             del self.xindex
@@ -514,7 +514,7 @@ class Series(Array):
         return self[idx]
 
     def copy(self, order='C'):
-        new = super(Series, self).copy(order=order)
+        new = super().copy(order=order)
         try:
             new._xindex = self._xindex.copy()
         except AttributeError:
@@ -571,7 +571,7 @@ class Series(Array):
         numpy.diff
             for documentation on the underlying method
         """
-        out = super(Array, self).diff(n=n, axis=axis)
+        out = super().diff(n=n, axis=axis)
         try:
             out.x0 = self.x0 + self.dx * n
         except AttributeError:  # irregular xindex
@@ -579,7 +579,7 @@ class Series(Array):
         return out
 
     def __getslice__(self, i, j):
-        new = super(Series, self).__getslice__(i, j)
+        new = super().__getslice__(i, j)
         if i:
             try:
                 new.x0 = self.x0 + i * self.dx
@@ -588,7 +588,7 @@ class Series(Array):
         return new
 
     def __getitem__(self, item):
-        new = super(Series, self).__getitem__(item)
+        new = super().__getitem__(item)
 
         # slice axis 0 metadata
         slice_, = sliceutils.format_nd_slice(item, 1)
@@ -951,9 +951,10 @@ class Series(Array):
         Parameters
         ----------
         pad_width : `int`, pair of `ints`
-            number of samples by which to pad each end of the array.
-            Single int to pad both ends by the same amount, or
-            (before, after) `tuple` to give uneven padding
+            number of samples by which to pad each end of the array;
+            given a single `int` to pad both ends by the same amount,
+            or a (before, after) `tuple` for assymetric padding
+
         **kwargs
             see :meth:`numpy.pad` for kwarg documentation
 
@@ -972,12 +973,12 @@ class Series(Array):
         if isinstance(pad_width, int):
             pad_width = (pad_width,)
         # form pad and view to this type
-        new = numpy.pad(self, pad_width, **kwargs).view(type(self))
+        new = numpy.pad(self.value, pad_width, **kwargs).view(type(self))
         # numpy.pad has stripped all metadata, so copy it over
         new.__metadata_finalize__(self)
         new._unit = self.unit
         # finally move the starting index based on the amount of left-padding
-        new.x0 -= self.dx * pad_width[0]
+        new.x0 = new.x0 - self.dx * pad_width[0]
         return new
 
     def inject(self, other):

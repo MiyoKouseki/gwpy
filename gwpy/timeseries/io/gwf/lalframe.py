@@ -21,12 +21,8 @@
 The frame format is defined in LIGO-T970130 available from dcc.ligo.org.
 """
 
-from __future__ import (absolute_import, division)
-
 import os.path
 import warnings
-
-from six import string_types
 
 # import in this order so that lalframe throws the ImportError
 # to give the user a bit more information
@@ -72,7 +68,7 @@ def open_data_source(source):
         pass
 
     # import cache from file
-    if (isinstance(source, string_types) and
+    if (isinstance(source, str) and
             source.endswith(('.lcf', '.cache'))):
         source = lal.CacheImport(source)
 
@@ -90,7 +86,7 @@ def open_data_source(source):
         return lalframe.FrStreamCacheOpen(source)
 
     # read single file
-    if isinstance(source, string_types):
+    if isinstance(source, str):
         return lalframe.FrStreamOpen(*map(str, os.path.split(source)))
 
     raise ValueError("Don't know how to open data source of type %r"
@@ -175,8 +171,12 @@ def _read_channel(stream, channel, start, duration):
 
 # -- write --------------------------------------------------------------------
 
-def write(tsdict, outfile, start=None, end=None,
-          name='gwpy', run=0):
+def write(
+        tsdict, outfile,
+        start=None, end=None,
+        type=None,
+        name='gwpy', run=0,
+):
     """Write data to a GWF file using the LALFrame API
     """
     if not start:
@@ -201,12 +201,23 @@ def write(tsdict, outfile, start=None, end=None,
     frame = lalframe.FrameNew(start, duration, name, run, 0, detectors)
 
     for series in tsdict.values():
+        # get type
+        ctype = (
+                type or
+                getattr(series.channel, "_ctype", "proc") or
+                "proc"
+        ).title()
+
         # convert to LAL
         lalseries = series.to_lal()
 
         # find adder
         add_ = lalutils.find_typed_function(
-            series.dtype, 'FrameAdd', 'TimeSeriesProcData', module=lalframe)
+            series.dtype,
+            'FrameAdd',
+            'TimeSeries{}Data'.format(ctype),
+            module=lalframe,
+        )
 
         # add time series to frame
         add_(frame, lalseries)

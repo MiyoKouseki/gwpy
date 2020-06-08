@@ -19,13 +19,10 @@
 """This module defines the `Channel` and `ChannelList` classes.
 """
 
-from __future__ import print_function
-
 import re
 from copy import copy
 from math import ceil
-
-from six.moves.urllib.parse import urlparse
+from urllib.parse import urlparse
 
 from astropy import units
 from astropy.io import registry as io_registry
@@ -402,7 +399,7 @@ class Channel(object):
     # -- classmethods ---------------------------
 
     @classmethod
-    def query(cls, name, use_kerberos=None, debug=False):
+    def query(cls, name, kerberos=None):
         """Query the LIGO Channel Information System for the `Channel`
         matching the given name
 
@@ -411,14 +408,10 @@ class Channel(object):
         name : `str`
             name of channel
 
-        use_kerberos : `bool`, optional
+        kerberos : `bool`, optional
             use an existing Kerberos ticket as the authentication credential,
             default behaviour will check for credentials and request username
             and password if none are found (`None`)
-
-        debug : `bool`, optional
-            print verbose HTTP connection status for debugging,
-            default: `False`
 
         Returns
         -------
@@ -426,8 +419,7 @@ class Channel(object):
              a new `Channel` containing all of the attributes set from
              its entry in the CIS
         """
-        channellist = ChannelList.query(name, use_kerberos=use_kerberos,
-                                        debug=debug)
+        channellist = ChannelList.query(name, kerberos=kerberos)
         if not channellist:
             raise ValueError("No channels found matching '%s'" % name)
         if len(channellist) > 1:
@@ -768,7 +760,7 @@ class ChannelList(list):
         return self.__class__(matched)
 
     @classmethod
-    def query(cls, name, use_kerberos=None, debug=False):
+    def query(cls, name, kerberos=None):
         """Query the LIGO Channel Information System a `ChannelList`.
 
         Parameters
@@ -776,14 +768,10 @@ class ChannelList(list):
         name : `str`
             name of channel, or part of it.
 
-        use_kerberos : `bool`, optional
+        kerberos : `bool`, optional
             use an existing Kerberos ticket as the authentication credential,
             default behaviour will check for credentials and request username
             and password if none are found (`None`)
-
-        debug : `bool`, optional
-            print verbose HTTP connection status for debugging,
-            default: `False`
 
         Returns
         -------
@@ -791,7 +779,7 @@ class ChannelList(list):
             a new list containing all `Channels <Channel>` found.
         """
         from .io import cis
-        return cis.query(name, use_kerberos=use_kerberos, debug=debug)
+        return cis.query(name, kerberos=kerberos)
 
     @classmethod
     def query_nds2(cls, names, host=None, port=None, connection=None,

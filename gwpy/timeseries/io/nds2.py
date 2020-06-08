@@ -19,12 +19,9 @@
 """NDS2 data query routines for the TimeSeries
 """
 
-from __future__ import division
-
 import operator
 import warnings
-
-from six.moves import reduce
+from functools import reduce
 
 from numpy import ones as numpy_ones
 
@@ -34,6 +31,7 @@ from ...segments import (Segment, SegmentList)
 from ...utils import gprint
 from ...utils.progress import progress_bar
 from .. import (TimeSeries)
+from .core import _pad_series
 
 __author__ = "Duncan Macleod <duncan.macleod@ligo.org>"
 
@@ -188,19 +186,6 @@ def fetch(channels, start, end, type=None, dtype=None, allow_tape=None,
                 out[chan] = _pad_series(ts, pad, start, end)
 
     return out
-
-
-def _pad_series(ts, pad, start, end):
-    """Pad a timeseries to match the specified [start, end) limits
-
-    To cover a gap in data returned from NDS
-    """
-    span = ts.span
-    pada = max(int((span[0] - start) * ts.sample_rate.value), 0)
-    padb = max(int((end - span[1]) * ts.sample_rate.value), 0)
-    if pada or padb:
-        return ts.pad((pada, padb), mode='constant', constant_values=(pad,))
-    return ts
 
 
 def _create_series(ndschan, value, start, end, series_class=TimeSeries):

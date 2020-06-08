@@ -21,11 +21,7 @@
 
 import warnings
 
-from six import string_types
-
 import numpy
-
-import scipy
 
 from astropy import units
 from astropy.io import registry as io_registry
@@ -161,8 +157,8 @@ class Spectrogram(Array2D):
             kwargs['yindex'] = frequencies
 
         # generate Spectrogram
-        return super(Spectrogram, cls).__new__(cls, data, unit=unit, name=name,
-                                               channel=channel, **kwargs)
+        return super().__new__(cls, data, unit=unit, name=name,
+                               channel=channel, **kwargs)
 
     # -- Spectrogram properties -----------------
 
@@ -309,11 +305,11 @@ class Spectrogram(Array2D):
         ValueError
             if ``operand`` is given as a `str` that isn't supported
         """
-        if isinstance(operand, string_types):
+        if isinstance(operand, str):
             if operand == 'mean':
                 operand = self.mean(axis=0)
             elif operand == 'median':
-                operand = self.nanmedian(axis=0)
+                operand = self.median(axis=0)
             else:
                 raise ValueError("operand %r unrecognised, please give a "
                                  "Quantity or one of: 'mean', 'median'"
@@ -355,7 +351,7 @@ class Spectrogram(Array2D):
             kwargs.setdefault('method', 'imshow' if kwargs.pop('imshow') else
                                         'pcolormesh')
         kwargs.update(figsize=figsize, xscale=xscale)
-        return super(Spectrogram, self).plot(**kwargs)
+        return super().plot(**kwargs)
 
     @classmethod
     def from_spectra(cls, *spectra, **kwargs):
@@ -414,8 +410,7 @@ class Spectrogram(Array2D):
             the given percentile `FrequencySeries` calculated from this
             `SpectralVaraicence`
         """
-        out = scipy.percentile(self.value, percentile, axis=0)
-        #out = scipy.nanpercentile(self.value, percentile, axis=0)
+        out = numpy.percentile(self.value, percentile, axis=0)
         if self.name is not None:
             name = '{}: {} percentile'.format(self.name, _ordinal(percentile))
         else:
@@ -427,7 +422,7 @@ class Spectrogram(Array2D):
 
     def zpk(self, zeros, poles, gain, analog=True):
         """Filter this `Spectrogram` by applying a zero-pole-gain filter
-        
+
         Parameters
         ----------
         zeros : `array-like`
@@ -595,8 +590,7 @@ class Spectrogram(Array2D):
     # -- Spectrogram ufuncs ---------------------
 
     def _wrap_function(self, function, *args, **kwargs):
-        out = super(Spectrogram, self)._wrap_function(
-            function, *args, **kwargs)
+        out = super()._wrap_function(function, *args, **kwargs)
         # requested frequency axis, return a FrequencySeries
         if out.ndim == 1 and out.x0.unit == self.y0.unit:
             return FrequencySeries(out.value, name=out.name, unit=out.unit,
@@ -613,7 +607,7 @@ class Spectrogram(Array2D):
     # -- other ----------------------------------
 
     def __getitem__(self, item):
-        out = super(Spectrogram, self).__getitem__(item)
+        out = super().__getitem__(item)
 
         # set epoch manually, because Spectrogram doesn't store self._epoch
         if isinstance(out, self._columnclass):

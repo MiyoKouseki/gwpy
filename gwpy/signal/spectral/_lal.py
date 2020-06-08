@@ -25,12 +25,13 @@ for more details
 This module is deprecated and will be removed in a future release.
 """
 
-from __future__ import absolute_import
-
 import re
 import warnings
 
+import numpy
+
 from ...frequencyseries import FrequencySeries
+from ...time import to_gps
 from ..window import canonical_name
 from ._utils import scale_timeseries_unit
 from . import _registry as fft_registry
@@ -133,16 +134,17 @@ def generate_window(length, window=None, dtype='float64'):
         return LAL_WINDOWS[key]
 
 
-def window_from_array(array):
+def window_from_array(array, dtype=None):
     """Convert a `numpy.ndarray` into a LAL `Window` object
     """
     from ...utils.lal import (find_typed_function)
 
-    dtype = array.dtype
+    if dtype is None:
+        dtype = array.dtype
 
     # create sequence
     seq = find_typed_function(dtype, 'Create', 'Sequence')(array.size)
-    seq.data = array
+    seq.data = numpy.asarray(array, dtype=dtype)
 
     # create window from sequence
     return find_typed_function(dtype, 'Create', 'WindowFromSequence')(seq)
@@ -216,9 +218,14 @@ def _lal_spectrum(timeseries, segmentlength, noverlap=None, method='welch',
 
     # generate output spectrum
     create = find_typed_function(timeseries.dtype, 'Create', 'FrequencySeries')
-    lalfs = create(timeseries.name, lal.LIGOTimeGPS(timeseries.epoch.gps), 0,
-                   1 / segmentlength, lal.StrainUnit,
-                   int(segmentlength // 2 + 1))
+    lalfs = create(
+        timeseries.name,
+        lal.LIGOTimeGPS(to_gps(timeseries.epoch.gps)),
+        0,
+        1 / segmentlength,
+        lal.StrainUnit,
+        int(segmentlength // 2 + 1),
+    )
 
     # find LAL method (e.g. median-mean -> lal.REAL8AverageSpectrumMedianMean)
     methodname = ''.join(map(str.title, re.split('[-_]', method)))

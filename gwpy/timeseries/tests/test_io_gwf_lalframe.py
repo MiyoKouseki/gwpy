@@ -20,8 +20,7 @@
 """
 
 from pathlib import Path
-
-from six.moves.urllib.parse import urlparse
+from urllib.parse import urlparse
 
 import pytest
 
@@ -162,8 +161,6 @@ def test_write():
         # read it back and check things
         data2 = gwpy_lalframe.read(tmp, CHANNELS)
         assert_dict_equal(data, data2, assert_quantity_sub_equal)
-
-        #
 
 
 def test_write_no_ifo():

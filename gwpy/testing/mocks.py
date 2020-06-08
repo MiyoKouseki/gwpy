@@ -20,13 +20,12 @@
 """
 
 import inspect
-
-from six.moves.urllib.error import HTTPError
+from unittest import mock
+from urllib.error import HTTPError
 
 from ..detector import Channel
 from ..time import LIGOTimeGPS
 from ..segments import (Segment, SegmentList)
-from .compat import mock
 
 __author__ = 'Duncan Macleod <duncan.macleod@ligo.org>'
 

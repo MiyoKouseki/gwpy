@@ -103,7 +103,7 @@ class FrequencySeries(Series):
             kwargs['xindex'] = frequencies
 
         # generate FrequencySeries
-        return super(FrequencySeries, cls).__new__(
+        return super().__new__(
             cls, data, unit=unit, name=name, channel=channel,
             epoch=epoch, **kwargs)
 
@@ -201,7 +201,7 @@ class FrequencySeries(Series):
                 kwargs.setdefault('yscale', 'log')
 
         kwargs.update(xscale=xscale)
-        return super(FrequencySeries, self).plot(**kwargs)
+        return super().plot(**kwargs)
 
     def ifft(self):
         """Compute the one-dimensional discrete inverse Fourier
@@ -292,7 +292,8 @@ class FrequencySeries(Series):
         """
         f0 = self.f0.decompose().value
         N = (self.size - 1) * (self.df.decompose().value / df) + 1
-        fsamples = numpy.arange(0, numpy.rint(N), dtype=self.dtype) * df + f0
+        fsamples = numpy.arange(0, numpy.rint(N),
+                                dtype=self.real.dtype) * df + f0
         out = type(self)(numpy.interp(fsamples, self.frequencies.value,
                                       self.value))
         out.__array_finalize__(self)
